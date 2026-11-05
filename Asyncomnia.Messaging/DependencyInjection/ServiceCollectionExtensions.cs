@@ -14,6 +14,8 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<IMessageHandlerDispatcher, MessageHandlerDispatcher>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+        services.TryAddSingleton<MessageEnvelopeFactory>();
+
         services.TryAddScoped<IEventPublisher, EventPublisher>();
         services.TryAddScoped<ICommandSender, CommandSender>();
 

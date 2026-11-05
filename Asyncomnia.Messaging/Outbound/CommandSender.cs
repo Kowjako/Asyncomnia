@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Asyncomnia.Messaging.Outbound;
+﻿namespace Asyncomnia.Messaging.Outbound;
 
 internal sealed class CommandSender(MessageEnvelopeFactory factory, IOutboundMessagePipeline pipe) : ICommandSender
 {
@@ -10,6 +6,6 @@ internal sealed class CommandSender(MessageEnvelopeFactory factory, IOutboundMes
         where TCommand : class, ICommand
     {
         var envelope = factory.Create<TCommand>(command, options);
-        return pipe.PublishAsync(envelope, token);
+        return pipe.SendAsync(envelope, token);
     }
 }

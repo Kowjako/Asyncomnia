@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Asyncomnia.Messaging.Outbound;
+﻿namespace Asyncomnia.Messaging.Outbound;
 
 internal sealed class MessageEnvelopeFactory(TimeProvider timeProvider)
 {
