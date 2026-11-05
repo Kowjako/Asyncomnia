@@ -10,7 +10,6 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.Storage;
 internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> options) : IOutboxStore
 {
     private readonly SqlServerOutboxOptions _options = options.Value;
-    private string QualifiedTableName => $"[{_options.SchemaName}].[{_options.TableName}]";
 
     public async Task<IReadOnlyList<ClaimedOutboxMessage>> ClaimAsync(int batchSize, TimeSpan leaseDuration, CancellationToken token = default)
     {
@@ -40,7 +39,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
                     ProcessedAt,
                     FailedAt,
                     LastError
-                FROM {QualifiedTableName} WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
+                FROM {SqlServerOutboxDefaults.QualifiedTableName} WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
                 WHERE ProcessedAt IS NULL
                   AND FailedAt IS NULL
                   AND AvailableAt <= @Now
@@ -100,7 +99,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
     public async Task<bool> CompleteAsync(Guid messageId, Guid leaseId, CancellationToken token = default)
     {
         var sql = @$"
-            UPDATE {QualifiedTableName}
+            UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
             SET ProcessedAt = SYSUTCDATETIME(),
                 LeaseId = NULL,
                 LeaseExpiresAt = NULL
@@ -127,7 +126,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
         var storedError = NormalizeError(error);
 
         var sql = @$"
-        UPDATE {QualifiedTableName}
+        UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
         SET FailedAt = SYSUTCDATETIME(),
             LastError = @Error,
             LeaseId = NULL,
@@ -159,13 +158,13 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
         var retryDelaySeconds = checked((int)Math.Ceiling(retryDelay.TotalSeconds));
 
         var sql = @$"
-        UPDATE {QualifiedTableName}
+        UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
         SET AvailableAt = DATEADD(SECOND, @RetryDelaySeconds, SYSUTCDATETIME()),
             LastError = @Error,
             LeaseId = NULL,
             LeaseExpiresAt = NULL
         WHERE MessageId = @MessageId AND 
-              LeaseId = @LeaseId AND 
+              LeaseId = @LeaseId AND
               ProcessedAt IS NULL
               AND FailedAt IS NULL";
 
