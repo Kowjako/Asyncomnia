@@ -25,8 +25,8 @@ public static class HandlerRegistrationExtensions
     {
         ArgumentNullException.ThrowIfNull(builder, nameof(builder));
 
-        // Prevents duplicate registration of the same handler implementation.
-        // Multiple different handlers for one event are allowed.
+        // Prevents duplicate registration of the same implementation.
+        // The dispatcher requires exactly one command handler.
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ICommandHandler<TCommand>, THandler>());
         return builder;
     }

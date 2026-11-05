@@ -41,11 +41,11 @@ internal sealed class MessageHandlerDispatcher(IServiceScopeFactory scopeFactory
             throw new InvalidOperationException($"No command handlers is registered for '{typeof(TCommand).FullName}'");
         }
 
-        foreach (var handler in handlers)
+        if (handlers.Length > 1)
         {
-            ct.ThrowIfCancellationRequested();
-
-            await handler.HandleAsync(envelope.Message, envelope.Metadata, ct);
+            throw new InvalidOperationException($"More than one command handler is registered for '{typeof(TCommand).FullName}'");
         }
+
+        await handlers[0].HandleAsync(envelope.Message, envelope.Metadata, ct);
     }
 }
