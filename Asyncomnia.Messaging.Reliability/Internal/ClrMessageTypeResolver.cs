@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Asyncomnia.Messaging.Reliability.Internal;
+﻿namespace Asyncomnia.Messaging.Reliability.Internal;
 
 internal static class ClrMessageTypeResolver
 {
@@ -24,6 +20,6 @@ internal static class ClrMessageTypeResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(contractType);
 
         return Type.GetType(contractType, throwOnError: false)
-            ?? throw new InvalidOperationException($"Could not resolve messsage contract type '{contractType}'");
+            ?? throw new InvalidOperationException($"Could not resolve message contract type '{contractType}'");
     }
 }

@@ -1,11 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Asyncomnia.Messaging.Reliability.Outbox;
+﻿namespace Asyncomnia.Messaging.Reliability.Outbox;
 
 public sealed record OutboxMessage
 {
+    public Guid MessageId { get; }
+    public string ContractType { get; }
+    public string MessageJson { get; }
+    public Guid? CorrelationId { get; }
+    public DateTimeOffset CreatedAt { get; }
+
     public OutboxMessage(Guid messageId, string contractType, string messageJson, Guid? correlationId, DateTimeOffset createdAt)
     {
         if (messageId == Guid.Empty)
@@ -23,10 +25,4 @@ public sealed record OutboxMessage
         CorrelationId = correlationId;
         CreatedAt = createdAt;
     }
-
-    public Guid MessageId { get; init; }
-    public string ContractType { get; init; }
-    public string MessageJson { get; init; }
-    public Guid? CorrelationId { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
 }
