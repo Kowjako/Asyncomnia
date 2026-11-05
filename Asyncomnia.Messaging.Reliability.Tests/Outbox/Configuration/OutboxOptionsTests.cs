@@ -19,6 +19,7 @@ public sealed class OutboxOptionsTests
         Assert.Equal(10, options.BatchSize);
         Assert.Equal(TimeSpan.FromSeconds(1), options.PollingInterval);
         Assert.Equal(TimeSpan.FromMinutes(1), options.LeaseDuration);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.RetryDelay);
         Assert.Equal(10, options.MaxAttempts);
     }
 
@@ -31,6 +32,7 @@ public sealed class OutboxOptionsTests
             options.BatchSize = 20;
             options.PollingInterval = TimeSpan.FromMilliseconds(500);
             options.LeaseDuration = TimeSpan.FromMinutes(2);
+            options.RetryDelay = TimeSpan.FromSeconds(9);
             options.MaxAttempts = 5;
         });
 
@@ -40,6 +42,7 @@ public sealed class OutboxOptionsTests
         Assert.Equal(20, options.BatchSize);
         Assert.Equal(TimeSpan.FromMilliseconds(500), options.PollingInterval);
         Assert.Equal(TimeSpan.FromMinutes(2), options.LeaseDuration);
+        Assert.Equal(TimeSpan.FromSeconds(9), options.RetryDelay);
         Assert.Equal(5, options.MaxAttempts);
     }
 
@@ -90,6 +93,16 @@ public sealed class OutboxOptionsTests
 
         Assert.Contains(
             "OutboxOptions:MaxAttempts must be greater than zero",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WhenRetryDelayIsNotPositive_ThrowsValidationException()
+    {
+        var exception = GetValidationException(options => options.RetryDelay = TimeSpan.Zero);
+
+        Assert.Contains(
+            "OutboxOptions:RetryDelay must be greater than zero",
             exception.Failures);
     }
 
