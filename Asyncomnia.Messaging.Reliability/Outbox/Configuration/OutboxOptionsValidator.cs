@@ -31,6 +31,11 @@ internal sealed class OutboxOptionsValidator : IValidateOptions<OutboxOptions>
             return ValidateOptionsResult.Fail("OutboxOptions:MaxAttempts must be greater than zero");
         }
 
+        if (options.RetryDelay <= TimeSpan.Zero)
+        {
+            return ValidateOptionsResult.Fail("OutboxOptions:RetryDelay must be greater than zero");
+        }
+
         return ValidateOptionsResult.Success;
     }
 }

@@ -9,5 +9,7 @@ public sealed class OutboxOptions
 
     public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(1);
 
+    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+
     public int MaxAttempts { get; set; } = 10;
 }

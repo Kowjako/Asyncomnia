@@ -2,6 +2,7 @@
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
+using Asyncomnia.Messaging.Reliability.Outbox.Processing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,8 @@ public static class OutboxBuilderExtensions
         {
             optionsBuilder.Configure(configure);
         }
+
+        builder.Services.TryAddScoped<OutboxBatchProcessor>();
 
         return builder;
     }
