@@ -5,6 +5,7 @@ using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
@@ -29,6 +30,7 @@ public static class OutboxBuilderExtensions
         }
 
         builder.Services.TryAddScoped<OutboxBatchProcessor>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, OutboxBackgroundJob>());
 
         return builder;
     }

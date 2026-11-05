@@ -5,7 +5,7 @@ internal sealed class EventPublisher(MessageEnvelopeFactory factory, IOutboundMe
     public Task PublishAsync<TEvent>(TEvent @event, MessageDispatchOptions? options = null, CancellationToken token = default)
         where TEvent : class, IEvent
     {
-        var envelope = factory.Create<TEvent>(@event, options);
+        var envelope = factory.Create(@event, options);
         return pipe.PublishAsync(envelope, token);
     }
 }

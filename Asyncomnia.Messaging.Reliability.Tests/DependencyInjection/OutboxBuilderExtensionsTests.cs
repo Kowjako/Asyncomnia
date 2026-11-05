@@ -4,6 +4,7 @@ using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -62,5 +63,21 @@ public sealed class OutboxBuilderExtensionsTests
             services,
             x => x.ServiceType == typeof(OutboxBatchProcessor));
         Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+    }
+
+    [Fact]
+    public void UseOutbox_CalledTwice_LeavesSingleBackgroundJobRegistration()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseOutbox();
+        builder.UseOutbox();
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IHostedService));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal("OutboxBackgroundJob", registration.ImplementationType?.Name);
     }
 }
