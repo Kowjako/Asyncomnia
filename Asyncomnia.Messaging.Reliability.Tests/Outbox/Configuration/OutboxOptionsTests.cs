@@ -109,7 +109,16 @@ public sealed class OutboxOptionsTests
     private static ServiceProvider CreateProvider(Action<OutboxOptions>? configure = null)
     {
         var services = new ServiceCollection();
-        services.AddAsyncomniaMessaging().UseOutbox(configure);
+        var builder = services.AddAsyncomniaMessaging();
+
+        if (configure is null)
+        {
+            builder.UseOutbox();
+        }
+        else
+        {
+            builder.UseOutbox(outbox => outbox.Configure(configure));
+        }
 
         return services.BuildServiceProvider();
     }

@@ -12,7 +12,7 @@ namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class OutboxBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder, Action<OutboxOptions>? configure = null)
+    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder, Action<OutboxBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -22,15 +22,13 @@ public static class OutboxBuilderExtensions
         builder.Services.AddScoped<IOutboundMessagePipeline, OutboxMessagePipeline>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OutboxOptions>, OutboxOptionsValidator>());
-
-        var optionsBuilder = builder.Services.AddOptions<OutboxOptions>().ValidateOnStart();
-        if (configure != null)
-        {
-            optionsBuilder.Configure(configure);
-        }
+        builder.Services.AddOptions<OutboxOptions>().ValidateOnStart();
 
         builder.Services.TryAddScoped<OutboxBatchProcessor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, OutboxBackgroundJob>());
+
+        var outboxBuilder = new OutboxBuilder(builder.Services);
+        configure?.Invoke(outboxBuilder);
 
         return builder;
     }

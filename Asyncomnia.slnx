@@ -2,10 +2,11 @@
   <Project Path="Asyncomnia.Messaging.Abstractions/Asyncomnia.Messaging.Abstractions.csproj" Id="6c3a3292-a772-472f-8441-2cc1752c67ca" />
   <Project Path="Asyncomnia.Messaging.RabbitMQ/Asyncomnia.Messaging.RabbitMQ.csproj" Id="0e6d5f66-ea1f-4056-8919-701786cd96a7" />
   <Project Path="Asyncomnia.Messaging.Reliability/Asyncomnia.Messaging.Reliability.csproj" Id="882809ee-ab14-413f-9067-8f6e782fb543" />
+  <Project Path="Asyncomnia.Messaging.Reliability.SqlServer/Asyncomnia.Messaging.Reliability.SqlServer.csproj" Id="9331eebf-2aa1-44d7-89db-d7ca04a074b0" />
+  <Project Path="Asyncomnia.Messaging.Reliability.SqlServer.Tests/Asyncomnia.Messaging.Reliability.SqlServer.Tests.csproj" Id="fb06af25-af77-4910-8e5d-f530239d4d0e" />
   <Project Path="Asyncomnia.Messaging.Reliability.Tests/Asyncomnia.Messaging.Reliability.Tests.csproj" Id="61bc39b5-88d4-4206-83d2-d41768cd8e48" />
   <Project Path="Asyncomnia.Messaging.Tests/Asyncomnia.Messaging.Tests.csproj" Id="c1e88162-69d4-4360-b606-b402dfa192a3" />
   <Project Path="Asyncomnia.Messaging/Asyncomnia.Messaging.csproj" Id="e03746cb-e2ae-49c1-82a0-c366498e19f7" />
-  <Project Path="Asyncomnia.Persistence.Dapper/Asyncomnia.Persistence.Dapper.csproj" Id="f6a2ae58-0fc2-456e-9489-c69cb3daa603" />
   <Project Path="Asyncomnia.Persistence.EntityFrameworkCore/Asyncomnia.Persistence.EntityFrameworkCore.csproj" Id="c348f0fa-7635-466e-bead-7990c03a6505" />
   <Project Path="Asyncomnia.Sagas.RabbitMQ/Asyncomnia.Sagas.RabbitMQ.csproj" Id="d7a6dd90-f672-412e-bedc-dacad9fd34f8" />
   <Project Path="Asyncomnia.Sagas/Asyncomnia.Sagas.csproj" Id="932a314f-6777-4fbc-940a-3cbcbaf36349" />
