@@ -1,7 +1,9 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Asyncomnia.Messaging.Reliability.Tests.DependencyInjection;
@@ -32,5 +34,17 @@ public sealed class OutboxBuilderExtensionsTests
         builder.UseOutbox();
 
         Assert.Single(services, x => x.ServiceType == typeof(IOutboundMessagePipeline));
+    }
+
+    [Fact]
+    public void UseOutbox_CalledTwice_LeavesSingleOptionsValidatorRegistration()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseOutbox();
+        builder.UseOutbox();
+
+        Assert.Single(services, x => x.ServiceType == typeof(IValidateOptions<OutboxOptions>));
     }
 }

@@ -1,17 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Asyncomnia.Messaging.Configuration;
+﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.Outbox;
+using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class OutboxBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder)
+    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder, Action<OutboxOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -19,6 +18,14 @@ public static class OutboxBuilderExtensions
 
         builder.Services.RemoveAll<IOutboundMessagePipeline>();
         builder.Services.AddScoped<IOutboundMessagePipeline, OutboxMessagePipeline>();
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OutboxOptions>, OutboxOptionsValidator>());
+
+        var optionsBuilder = builder.Services.AddOptions<OutboxOptions>().ValidateOnStart();
+        if (configure != null)
+        {
+            optionsBuilder.Configure(configure);
+        }
 
         return builder;
     }
