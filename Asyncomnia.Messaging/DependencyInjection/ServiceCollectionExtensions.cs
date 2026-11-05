@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Outbound;
+using Asyncomnia.Messaging.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -13,11 +14,13 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services, nameof(services));
 
         services.TryAddSingleton<IMessageHandlerDispatcher, MessageHandlerDispatcher>();
-        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<MessageEnvelopeFactory>();
 
         services.TryAddScoped<IEventPublisher, EventPublisher>();
         services.TryAddScoped<ICommandSender, CommandSender>();
+
+        services.TryAddScoped<IOutboundMessagePipeline, TransportMessagePipeline>();
 
         return new AsyncomniaMessagingBuilder(services);
     }
