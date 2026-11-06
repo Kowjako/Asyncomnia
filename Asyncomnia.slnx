@@ -4,6 +4,7 @@
   <Project Path="Asyncomnia.Messaging.Reliability/Asyncomnia.Messaging.Reliability.csproj" Id="882809ee-ab14-413f-9067-8f6e782fb543" />
   <Project Path="Asyncomnia.Messaging.Reliability.SqlServer/Asyncomnia.Messaging.Reliability.SqlServer.csproj" Id="9331eebf-2aa1-44d7-89db-d7ca04a074b0" />
   <Project Path="Asyncomnia.Messaging.Reliability.SqlServer.Tests/Asyncomnia.Messaging.Reliability.SqlServer.Tests.csproj" Id="fb06af25-af77-4910-8e5d-f530239d4d0e" />
+  <Project Path="Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests/Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests.csproj" Id="4f85f87f-5aaf-4ec4-89dc-240a7b01c8f7" />
   <Project Path="Asyncomnia.Messaging.Reliability.Tests/Asyncomnia.Messaging.Reliability.Tests.csproj" Id="61bc39b5-88d4-4206-83d2-d41768cd8e48" />
   <Project Path="Asyncomnia.Messaging.Tests/Asyncomnia.Messaging.Tests.csproj" Id="c1e88162-69d4-4360-b606-b402dfa192a3" />
   <Project Path="Asyncomnia.Messaging/Asyncomnia.Messaging.csproj" Id="e03746cb-e2ae-49c1-82a0-c366498e19f7" />
