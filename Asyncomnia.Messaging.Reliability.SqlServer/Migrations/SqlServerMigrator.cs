@@ -12,6 +12,9 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
 
     private const string ComponentName = "Messaging.Reliability.SqlServer";
 
+    private const string BootstrapResourceName =
+        "Asyncomnia.Messaging.Reliability.SqlServer.Migrations.Bootstrap.CreateMigrationHistory.sql";
+
     private const string ResourcePrefix = "Asyncomnia.Messaging.Reliability.SqlServer.Migrations.Schema.";
 
     private const string ResourceSuffix = ".sql";
@@ -54,19 +57,16 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
 
         var lockResult = await AcquireMigrationLockAsync(connection, transaction, token);
 
-        if (lockResult is -1 or -3)
+        switch (ClassifyMigrationLockResult(lockResult))
         {
-            return false;
-        }
-
-        if (lockResult == -2)
-        {
-            throw new OperationCanceledException("The Asyncomnia migration lock request was canceled.", token);
-        }
-
-        if (lockResult < 0)
-        {
-            throw new InvalidOperationException($"Could not acquire the Asyncomnia migration lock. Result: {lockResult}.");
+            case MigrationLockOutcome.Retry:
+                return false;
+            case MigrationLockOutcome.Canceled:
+                throw new OperationCanceledException("The Asyncomnia migration lock request was canceled.", token);
+            case MigrationLockOutcome.Failed:
+                throw new InvalidOperationException($"Could not acquire the Asyncomnia migration lock. Result: {lockResult}.");
+            case MigrationLockOutcome.Acquired:
+                break;
         }
 
         await EnsureMigrationHistoryAsync(connection, transaction, token);
@@ -99,8 +99,14 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
     {
         var assembly = typeof(SqlServerMigrator).Assembly;
 
-        var migrations = assembly
-            .GetManifestResourceNames()
+        return CreateMigrationCatalog(assembly.GetManifestResourceNames());
+    }
+
+    internal static IReadOnlyList<SqlMigration> CreateMigrationCatalog(IEnumerable<string> resourceNames)
+    {
+        ArgumentNullException.ThrowIfNull(resourceNames);
+
+        var migrations = resourceNames
             .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal) &&
                            name.EndsWith(ResourceSuffix, StringComparison.OrdinalIgnoreCase))
             .Select(resourceName =>
@@ -119,7 +125,35 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
             throw new InvalidOperationException("No embedded Asyncomnia SQL migrations were found.");
         }
 
+        var duplicateVersions = migrations
+            .GroupBy(migration => migration.Id[..4], StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .OrderBy(version => version, StringComparer.Ordinal)
+            .ToArray();
+
+        if (duplicateVersions.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"Duplicate Asyncomnia migration versions: {string.Join(", ", duplicateVersions)}.");
+        }
+
         return migrations;
+    }
+
+    internal static MigrationLockOutcome ClassifyMigrationLockResult(int lockResult)
+    {
+        if (lockResult >= 0)
+        {
+            return MigrationLockOutcome.Acquired;
+        }
+
+        return lockResult switch
+        {
+            -1 or -3 => MigrationLockOutcome.Retry,
+            -2 => MigrationLockOutcome.Canceled,
+            _ => MigrationLockOutcome.Failed
+        };
     }
 
     private static void ValidateMigrationId(string migrationId)
@@ -162,31 +196,14 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
 
     private static async Task EnsureMigrationHistoryAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
-        const string sql = @"
-            IF SCHEMA_ID(N'asyncomnia') IS NULL
-            BEGIN
-                EXEC(N'CREATE SCHEMA [asyncomnia]');
-            END;
-
-            IF OBJECT_ID(N'[asyncomnia].[SchemaMigrations]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [asyncomnia].[SchemaMigrations]
-                (
-                    [Component] nvarchar(200) NOT NULL,
-                    [MigrationId] nvarchar(200) NOT NULL,
-                    [AppliedAt] datetimeoffset(7) NOT NULL,
-
-                    CONSTRAINT [PK_SchemaMigrations] PRIMARY KEY CLUSTERED
-                    (
-                        [Component],
-                        [MigrationId]
-                    )
-                );
-            END";
+        var script = await ReadEmbeddedSqlAsync(
+            BootstrapResourceName,
+            "Migration bootstrap script",
+            token);
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = sql;
+        command.CommandText = script;
 
         await command.ExecuteNonQueryAsync(token);
     }
@@ -254,17 +271,25 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
 
     private static async Task<string> ReadMigrationScriptAsync(SqlMigration migration, CancellationToken token)
     {
+        return await ReadEmbeddedSqlAsync(
+            migration.ResourceName,
+            $"Migration '{migration.Id}'",
+            token);
+    }
+
+    private static async Task<string> ReadEmbeddedSqlAsync(string resourceName, string description, CancellationToken token)
+    {
         var assembly = typeof(SqlServerMigrator).Assembly;
 
-        await using var stream = assembly.GetManifestResourceStream(migration.ResourceName)
-            ?? throw new InvalidOperationException($"Migration resource '{migration.ResourceName}' was not found.");
+        await using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"SQL resource '{resourceName}' was not found.");
 
         using var reader = new StreamReader(stream);
         var script = await reader.ReadToEndAsync(token);
 
         if (string.IsNullOrWhiteSpace(script))
         {
-            throw new InvalidOperationException($"Migration '{migration.Id}' is empty.");
+            throw new InvalidOperationException($"{description} is empty.");
         }
 
         return script;

@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Migrations\Schema\*.sql" />
-    <EmbeddedResource Include="Migrations\Schema\*.sql" />
+    <None Remove="Migrations\**\*.sql" />
+    <EmbeddedResource Include="Migrations\**\*.sql" />
   </ItemGroup>
 
   <ItemGroup>
