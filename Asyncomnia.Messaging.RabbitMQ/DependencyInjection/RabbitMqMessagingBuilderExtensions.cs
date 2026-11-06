@@ -1,5 +1,8 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Routing;
+using Asyncomnia.Messaging.RabbitMQ.Transport;
+using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
 using EasyNetQ.ConnectionString;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,9 +25,44 @@ public static class RabbitMqMessagingBuilderExtensions
         {
             var options = serviceProvider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
             var parser = serviceProvider.GetRequiredService<IConnectionStringParser>();
-            return parser.Parse(options.ConnectionString);
+            var configuration = parser.Parse(options.ConnectionString);
+            configuration.PublisherConfirms = true; // enforce publisher confirms
+
+            return configuration;
         }).UseSystemTextJson();
 
+        builder.Services.TryAddSingleton<RabbitMqRouteResolver>();
+
+        builder.Services.RegisterAsyncomniaRoutingConventions();
+
+        builder.Services.TryAddSingleton<IOutboundTransport, EasyNetQOutboundTransport>();
+
         return builder;
+    }
+
+    private static void RegisterAsyncomniaRoutingConventions(this IServiceCollection services)
+    {
+        services.Replace(ServiceDescriptor.Singleton<IConventions>(serviceProvider =>
+        {
+            var typeNameSerializer = serviceProvider.GetRequiredService<ITypeNameSerializer>();
+            var routeResolver = serviceProvider.GetRequiredService<RabbitMqRouteResolver>();
+
+            var conventions = new Conventions(typeNameSerializer);
+
+            var defaultExchangeNaming = conventions.ExchangeNamingConvention;
+            var defaultTopicNaming = conventions.TopicNamingConvention;
+
+            conventions.ExchangeNamingConvention = messageType =>
+                typeof(IMessage).IsAssignableFrom(messageType)
+                    ? routeResolver.Resolve(messageType).ExchangeName
+                    : defaultExchangeNaming(messageType);
+
+            conventions.TopicNamingConvention = messageType =>
+                typeof(IMessage).IsAssignableFrom(messageType)
+                    ? routeResolver.Resolve(messageType).RoutingKey
+                    : defaultTopicNaming(messageType);
+
+            return conventions;
+        }));
     }
 }
