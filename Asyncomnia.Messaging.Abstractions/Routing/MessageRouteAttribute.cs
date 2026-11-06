@@ -1,4 +1,4 @@
-﻿namespace Asyncomnia.Messaging.Abstractions.Routing;
+﻿namespace Asyncomnia.Messaging.Routing;
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
 public sealed class MessageRouteAttribute : Attribute

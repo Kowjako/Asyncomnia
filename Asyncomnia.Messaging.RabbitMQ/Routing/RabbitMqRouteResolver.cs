@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using Asyncomnia.Messaging.Abstractions.Routing;
+using Asyncomnia.Messaging.Routing;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Routing;
 

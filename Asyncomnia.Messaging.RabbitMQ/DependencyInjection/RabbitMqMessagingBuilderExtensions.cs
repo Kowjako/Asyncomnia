@@ -29,7 +29,7 @@ public static class RabbitMqMessagingBuilderExtensions
             configuration.PublisherConfirms = true; // enforce publisher confirms
 
             return configuration;
-        }).UseSystemTextJson();
+        });
 
         builder.Services.TryAddSingleton<RabbitMqRouteResolver>();
 

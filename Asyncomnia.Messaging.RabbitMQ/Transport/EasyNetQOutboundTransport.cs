@@ -1,25 +1,53 @@
-﻿using Asyncomnia.Messaging.Transport;
+﻿using Asyncomnia.Messaging.RabbitMQ.Routing;
+using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Transport;
 
-internal sealed class EasyNetQOutboundTransport(IPubSub pubSub) : IOutboundTransport
+internal sealed class EasyNetQOutboundTransport(IAdvancedBus advancedBus,
+    IExchangeDeclareStrategy exchangeDeclareStrategy, 
+    IMessageDeliveryModeStrategy messageDeliveryModeStrategy,
+    RabbitMqRouteResolver routeResolver) : IOutboundTransport
 {
-    private readonly IPubSub _pubSub = pubSub ?? throw new ArgumentNullException(nameof(pubSub));
+    private readonly IAdvancedBus _advancedBus = advancedBus
+        ?? throw new ArgumentNullException(nameof(advancedBus));
 
-    public Task DispatchAsync(IMessage message, MessageMetadata metadata, CancellationToken token = default)
+    private readonly IExchangeDeclareStrategy _exchangeDeclareStrategy = exchangeDeclareStrategy
+        ?? throw new ArgumentNullException(nameof(exchangeDeclareStrategy));
+
+    private readonly IMessageDeliveryModeStrategy _messageDeliveryModeStrategy = messageDeliveryModeStrategy
+        ?? throw new ArgumentNullException(nameof(messageDeliveryModeStrategy));
+
+    private readonly RabbitMqRouteResolver _routeResolver = routeResolver
+        ?? throw new ArgumentNullException(nameof(routeResolver));
+
+    public async Task DispatchAsync(IMessage message, MessageMetadata metadata, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(metadata);
-
         token.ThrowIfCancellationRequested();
 
-        var headers = RabbitMqHeaders.Create(metadata);
+        var messageType = message.GetType();
+        var route = _routeResolver.Resolve(messageType);
 
-        return _pubSub.PublishAsync(
-            message,
-            message.GetType(),
-            configuration => configuration.WithHeaders(headers),
-            token);
+        var exchange = await _exchangeDeclareStrategy.DeclareExchangeAsync(route.ExchangeName, ExchangeType.Topic, token);
+
+        var properties = new MessageProperties
+        {
+            MessageId = metadata.MessageId.ToString("D"),
+            CorrelationId = (metadata.CorrelationId ?? metadata.MessageId).ToString("D"),
+            Timestamp = metadata.CreatedAt.ToUnixTimeSeconds(),
+            DeliveryMode = _messageDeliveryModeStrategy.GetDeliveryMode(messageType)
+        };
+
+        var brokerMessage = MessageFactory.CreateInstance(messageType, message, in properties);
+
+        await _advancedBus.PublishAsync(
+            exchange: exchange.Name,
+            routingKey: route.RoutingKey,
+            mandatory: message is ICommand,
+            publisherConfirms: true,
+            message: brokerMessage,
+            cancellationToken: token);
     }
 }
