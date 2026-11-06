@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="Asyncomnia.Messaging.Abstractions/Asyncomnia.Messaging.Abstractions.csproj" Id="6c3a3292-a772-472f-8441-2cc1752c67ca" />
   <Project Path="Asyncomnia.Messaging.RabbitMQ/Asyncomnia.Messaging.RabbitMQ.csproj" Id="0e6d5f66-ea1f-4056-8919-701786cd96a7" />
+  <Project Path="Asyncomnia.Messaging.RabbitMQ.IntegrationTests/Asyncomnia.Messaging.RabbitMQ.IntegrationTests.csproj" Id="0d1b0d51-3abe-4dd3-a922-ebdb850a79de" />
   <Project Path="Asyncomnia.Messaging.RabbitMQ.Tests/Asyncomnia.Messaging.RabbitMQ.Tests.csproj" Id="5af6fd70-83be-4d0a-a6e4-4dc28fba8f8e" />
   <Project Path="Asyncomnia.Messaging.Reliability/Asyncomnia.Messaging.Reliability.csproj" Id="882809ee-ab14-413f-9067-8f6e782fb543" />
   <Project Path="Asyncomnia.Messaging.Reliability.SqlServer/Asyncomnia.Messaging.Reliability.SqlServer.csproj" Id="9331eebf-2aa1-44d7-89db-d7ca04a074b0" />
