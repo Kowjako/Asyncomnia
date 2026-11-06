@@ -19,8 +19,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
         var leaseId = Guid.NewGuid();
         var leaseDurationSeconds = checked((int)Math.Ceiling(leaseDuration.TotalSeconds));
 
-        // Since we are using UPDATE on CTE, we dont need implicit transaction
-        // code below is atomic
+        // Using UPDATE on CTE we dont need implicit transaction - code below is atomic
         var sql = @$"
             DECLARE @Now datetimeoffset(7) = SYSUTCDATETIME();
 
@@ -126,15 +125,15 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
         var storedError = NormalizeError(error);
 
         var sql = @$"
-        UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
-        SET FailedAt = SYSUTCDATETIME(),
-            LastError = @Error,
-            LeaseId = NULL,
-            LeaseExpiresAt = NULL
-        WHERE MessageId = @MessageId AND 
-              LeaseId = @LeaseId AND 
-              ProcessedAt IS NULL AND 
-              FailedAt IS NULL";
+            UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
+            SET FailedAt = SYSUTCDATETIME(),
+                LastError = @Error,
+                LeaseId = NULL,
+                LeaseExpiresAt = NULL
+            WHERE MessageId = @MessageId AND 
+                  LeaseId = @LeaseId AND 
+                  ProcessedAt IS NULL AND 
+                  FailedAt IS NULL";
 
         await using var connection = new SqlConnection(_options.ConnectionString);
         await connection.OpenAsync(token);
@@ -158,15 +157,15 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> opti
         var retryDelaySeconds = checked((int)Math.Ceiling(retryDelay.TotalSeconds));
 
         var sql = @$"
-        UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
-        SET AvailableAt = DATEADD(SECOND, @RetryDelaySeconds, SYSUTCDATETIME()),
-            LastError = @Error,
-            LeaseId = NULL,
-            LeaseExpiresAt = NULL
-        WHERE MessageId = @MessageId AND 
-              LeaseId = @LeaseId AND
-              ProcessedAt IS NULL
-              AND FailedAt IS NULL";
+            UPDATE {SqlServerOutboxDefaults.QualifiedTableName}
+            SET AvailableAt = DATEADD(SECOND, @RetryDelaySeconds, SYSUTCDATETIME()),
+                LastError = @Error,
+                LeaseId = NULL,
+                LeaseExpiresAt = NULL
+            WHERE MessageId = @MessageId AND 
+                  LeaseId = @LeaseId AND
+                  ProcessedAt IS NULL
+                  AND FailedAt IS NULL";
 
         await using var connection = new SqlConnection(_options.ConnectionString);
         await connection.OpenAsync(token);

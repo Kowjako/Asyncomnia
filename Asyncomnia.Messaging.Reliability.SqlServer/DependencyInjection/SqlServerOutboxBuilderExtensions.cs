@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 using Asyncomnia.Messaging.Reliability.SqlServer.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -19,6 +20,7 @@ public static class SqlServerOutboxBuilderExtensions
         builder.Services.AddOptions<SqlServerOutboxOptions>().Configure(configure).ValidateOnStart();
 
         builder.Services.TryAddScoped<IOutboxStore, SqlServerOutboxStore>();
+        builder.Services.TryAddScoped<SqlServerMigrator>();
 
         return builder;
     }
