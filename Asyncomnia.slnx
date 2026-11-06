@@ -7,7 +7,7 @@
   <Project Path="Asyncomnia.Messaging.Reliability.Tests/Asyncomnia.Messaging.Reliability.Tests.csproj" Id="61bc39b5-88d4-4206-83d2-d41768cd8e48" />
   <Project Path="Asyncomnia.Messaging.Tests/Asyncomnia.Messaging.Tests.csproj" Id="c1e88162-69d4-4360-b606-b402dfa192a3" />
   <Project Path="Asyncomnia.Messaging/Asyncomnia.Messaging.csproj" Id="e03746cb-e2ae-49c1-82a0-c366498e19f7" />
-  <Project Path="Asyncomnia.Persistence.EntityFrameworkCore/Asyncomnia.Persistence.EntityFrameworkCore.csproj" Id="c348f0fa-7635-466e-bead-7990c03a6505" />
+  <Project Path="Asyncomnia.Messaging.Reliability.SqlServer.EFCore/Asyncomnia.Messaging.Reliability.SqlServer.EFCore.csproj" Id="c348f0fa-7635-466e-bead-7990c03a6505" />
   <Project Path="Asyncomnia.Sagas.RabbitMQ/Asyncomnia.Sagas.RabbitMQ.csproj" Id="d7a6dd90-f672-412e-bedc-dacad9fd34f8" />
   <Project Path="Asyncomnia.Sagas/Asyncomnia.Sagas.csproj" Id="932a314f-6777-4fbc-940a-3cbcbaf36349" />
 </Solution>
