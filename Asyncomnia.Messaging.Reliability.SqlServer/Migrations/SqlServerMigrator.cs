@@ -8,22 +8,67 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 
 internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options, ILogger<SqlServerMigrator> logger)
 {
+    private const int MaxMigrationLockAttempts = 3;
+
     private const string ComponentName = "Messaging.Reliability.SqlServer";
 
     private const string ResourcePrefix = "Asyncomnia.Messaging.Reliability.SqlServer.Migrations.Schema.";
 
     private const string ResourceSuffix = ".sql";
 
+    private static readonly TimeSpan MigrationLockRetryDelay = TimeSpan.FromSeconds(2);
+
     private readonly SqlServerOutboxOptions _options = options.Value;
 
     public async Task MigrateAsync(CancellationToken token = default)
+    {
+        for (var attempt = 1; attempt <= MaxMigrationLockAttempts; attempt++)
+        {
+            if (await TryMigrateAsync(token))
+            {
+                return;
+            }
+
+            if (attempt < MaxMigrationLockAttempts)
+            {
+                logger.LogWarning(
+                    "Could not acquire the Asyncomnia migration lock. Retrying in {RetryDelay}. Attempt {Attempt}/{MaxAttempts}",
+                    MigrationLockRetryDelay,
+                    attempt,
+                    MaxMigrationLockAttempts);
+
+                await Task.Delay(MigrationLockRetryDelay, token);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Could not acquire the Asyncomnia migration lock after {MaxMigrationLockAttempts} attempts.");
+    }
+
+    private async Task<bool> TryMigrateAsync(CancellationToken token)
     {
         await using var connection = new SqlConnection(_options.ConnectionString);
         await connection.OpenAsync(token);
 
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 
-        await AcquireMigrationLockAsync(connection, transaction, token);
+        var lockResult = await AcquireMigrationLockAsync(connection, transaction, token);
+
+        if (lockResult is -1 or -3)
+        {
+            return false;
+        }
+
+        if (lockResult == -2)
+        {
+            throw new OperationCanceledException("The Asyncomnia migration lock request was canceled.", token);
+        }
+
+        if (lockResult < 0)
+        {
+            throw new InvalidOperationException($"Could not acquire the Asyncomnia migration lock. Result: {lockResult}.");
+        }
+
         await EnsureMigrationHistoryAsync(connection, transaction, token);
 
         var appliedMigrations = await GetAppliedMigrationsAsync(connection, transaction, token);
@@ -46,6 +91,8 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
         }
 
         await transaction.CommitAsync(token);
+
+        return true;
     }
 
     private static IReadOnlyList<SqlMigration> DiscoverMigrations()
@@ -88,7 +135,7 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
         }
     }
 
-    private static async Task AcquireMigrationLockAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    private static async Task<int> AcquireMigrationLockAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string sql = @"
             DECLARE @LockResult int;
@@ -99,15 +146,18 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
                 @LockOwner = N'Transaction',
                 @LockTimeout = 30000;
 
-            IF @LockResult < 0
-                THROW 51000, 'Could not acquire the Asyncomnia migration lock', 1";
+            SELECT @LockResult";
 
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = sql;
         command.CommandTimeout = 35;
 
-        await command.ExecuteNonQueryAsync(token);
+        var result = await command.ExecuteScalarAsync(token);
+
+        return result is int lockResult
+            ? lockResult
+            : throw new InvalidOperationException("SQL Server returned an invalid migration lock result.");
     }
 
     private static async Task EnsureMigrationHistoryAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
