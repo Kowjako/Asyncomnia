@@ -48,7 +48,7 @@ public sealed class OutboxBackgroundJobTests
             await blocker.Task.WaitAsync(token);
             return Array.Empty<ClaimedOutboxMessage>();
         });
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         await using var provider = CreateProvider(() => CreateProcessor(store, transport.Object, options));
         using var job = CreateJob(provider, options, TimeProvider.System, out _);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -80,7 +80,7 @@ public sealed class OutboxBackgroundJobTests
             await blocker.Task.WaitAsync(token);
             return Array.Empty<ClaimedOutboxMessage>();
         });
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         transport
             .Setup(x => x.DispatchAsync(It.IsAny<IMessage>(), It.IsAny<MessageMetadata>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -117,7 +117,7 @@ public sealed class OutboxBackgroundJobTests
             return Task.FromResult<IReadOnlyList<ClaimedOutboxMessage>>(
                 Array.Empty<ClaimedOutboxMessage>());
         });
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         var timeProvider = new ManualTimeProvider();
         await using var provider = CreateProvider(() => CreateProcessor(store, transport.Object, options));
         using var job = CreateJob(provider, options, timeProvider, out _);
@@ -152,7 +152,7 @@ public sealed class OutboxBackgroundJobTests
             return Task.FromResult<IReadOnlyList<ClaimedOutboxMessage>>(
                 Array.Empty<ClaimedOutboxMessage>());
         });
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         var timeProvider = new ManualTimeProvider();
         await using var provider = CreateProvider(() => CreateProcessor(store, transport.Object, options));
         using var job = CreateJob(provider, options, timeProvider, out var logger);
@@ -189,7 +189,7 @@ public sealed class OutboxBackgroundJobTests
             provider.GetRequiredService<IServiceScopeFactory>());
     }
 
-    private static OutboxBatchProcessor CreateProcessor(IOutboxStore store, IOutboundMessageTransport transport, OutboxOptions options)
+    private static OutboxBatchProcessor CreateProcessor(IOutboxStore store, IOutboundTransport transport, OutboxOptions options)
     {
         return new OutboxBatchProcessor(
             store,

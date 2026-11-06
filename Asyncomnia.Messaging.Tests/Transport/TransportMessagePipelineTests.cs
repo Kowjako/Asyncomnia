@@ -49,7 +49,7 @@ public sealed class TransportMessagePipelineTests
         var services = new ServiceCollection();
         transport = new CapturingOutboundMessageTransport();
 
-        services.AddSingleton<IOutboundMessageTransport>(transport);
+        services.AddSingleton<IOutboundTransport>(transport);
         services.AddAsyncomniaMessaging();
 
         return services.BuildServiceProvider();

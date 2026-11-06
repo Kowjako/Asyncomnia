@@ -2,7 +2,7 @@ using Asyncomnia.Messaging.Transport;
 
 namespace Asyncomnia.Messaging.Tests.TestDoubles;
 
-internal sealed class CapturingOutboundMessageTransport : IOutboundMessageTransport
+internal sealed class CapturingOutboundMessageTransport : IOutboundTransport
 {
     public IMessage? Message { get; private set; }
 

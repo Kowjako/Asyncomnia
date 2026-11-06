@@ -10,14 +10,14 @@ namespace Asyncomnia.Messaging.Reliability.Outbox.Processing;
 internal sealed class OutboxBatchProcessor
 {
     private readonly IOutboxStore _outboxStore;
-    private readonly IOutboundMessageTransport _transport;
+    private readonly IOutboundTransport _transport;
     private readonly OutboxJsonSerializer _serializer;
     private readonly OutboxOptions _options;
     private readonly ILogger<OutboxBatchProcessor> _logger;
 
     public OutboxBatchProcessor(
         IOutboxStore outboxStore,
-        IOutboundMessageTransport transport,
+        IOutboundTransport transport,
         OutboxJsonSerializer serializer,
         IOptions<OutboxOptions> options,
         ILogger<OutboxBatchProcessor> logger)

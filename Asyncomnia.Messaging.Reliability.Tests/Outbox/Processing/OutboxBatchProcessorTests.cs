@@ -18,7 +18,7 @@ public sealed class OutboxBatchProcessorTests
     {
         var options = new OutboxOptions();
         var store = new Mock<IOutboxStore>(MockBehavior.Strict);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         store
             .Setup(x => x.ClaimAsync(options.BatchSize, options.LeaseDuration, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<ClaimedOutboxMessage>());
@@ -39,7 +39,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions();
         var claimedMessage = CreateClaimedMessage();
         var store = new Mock<IOutboxStore>(MockBehavior.Strict);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         IMessage? dispatchedMessage = null;
         MessageMetadata? dispatchedMetadata = null;
         CancellationToken dispatchedToken = default;
@@ -88,7 +88,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions { RetryDelay = TimeSpan.FromSeconds(7) };
         var claimedMessage = CreateClaimedMessage(attemptNumber: 2);
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         transport
             .Setup(x => x.DispatchAsync(It.IsAny<IMessage>(), It.IsAny<MessageMetadata>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Transport failed"));
@@ -121,7 +121,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions { MaxAttempts = 3 };
         var claimedMessage = CreateClaimedMessage(attemptNumber: options.MaxAttempts);
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         transport
             .Setup(x => x.DispatchAsync(It.IsAny<IMessage>(), It.IsAny<MessageMetadata>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Transport failed"));
@@ -151,7 +151,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions { MaxAttempts = 3 };
         var claimedMessage = CreateClaimedMessage(attemptNumber: options.MaxAttempts + 1);
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         store
             .Setup(x => x.FailAsync(
                 claimedMessage.Message.MessageId,
@@ -179,7 +179,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions();
         var claimedMessage = CreateClaimedMessage(contractType: "Missing.Message, Missing.Contracts");
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         store
             .Setup(x => x.ScheduleRetryAsync(
                 claimedMessage.Message.MessageId,
@@ -209,7 +209,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions();
         var claimedMessage = CreateClaimedMessage(messageJson: "{");
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         store
             .Setup(x => x.ScheduleRetryAsync(
                 claimedMessage.Message.MessageId,
@@ -239,7 +239,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions();
         var claimedMessage = CreateClaimedMessage();
         var store = new Mock<IOutboxStore>(MockBehavior.Strict);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
         store
@@ -265,7 +265,7 @@ public sealed class OutboxBatchProcessorTests
         var options = new OutboxOptions();
         var claimedMessage = CreateClaimedMessage();
         var store = CreateStoreReturning(options, claimedMessage);
-        var transport = new Mock<IOutboundMessageTransport>(MockBehavior.Strict);
+        var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
         var logger = new CapturingLogger<OutboxBatchProcessor>();
         transport
             .Setup(x => x.DispatchAsync(It.IsAny<IMessage>(), It.IsAny<MessageMetadata>(), It.IsAny<CancellationToken>()))
@@ -296,7 +296,7 @@ public sealed class OutboxBatchProcessorTests
         return store;
     }
 
-    private static OutboxBatchProcessor CreateProcessor(IOutboxStore store, IOutboundMessageTransport transport, OutboxOptions options, ILogger<OutboxBatchProcessor>? logger = null)
+    private static OutboxBatchProcessor CreateProcessor(IOutboxStore store, IOutboundTransport transport, OutboxOptions options, ILogger<OutboxBatchProcessor>? logger = null)
     {
         return new OutboxBatchProcessor(
             store,
