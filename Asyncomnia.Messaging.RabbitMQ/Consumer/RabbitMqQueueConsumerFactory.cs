@@ -21,8 +21,13 @@ internal sealed class RabbitMqQueueConsumerFactory(IAdvancedBus advancedBus, Rab
         ArgumentNullException.ThrowIfNull(subscription);
         ct.ThrowIfCancellationRequested();
 
+        var settings = subscription.Subscription.ConsumerSettings;
+
         return _advancedBus.ConsumeAsync(configuration =>
         {
+            configuration.WithPrefetchCount(settings.PrefetchCount)
+                         .WithConsumerDispatcherConcurrency(settings.DispatcherConcurrency);
+
             configuration.ForQueue(subscription.Queue, registration =>
             {
                 _handlerRegistrar.Register(registration, subscription.Subscription.Bindings);

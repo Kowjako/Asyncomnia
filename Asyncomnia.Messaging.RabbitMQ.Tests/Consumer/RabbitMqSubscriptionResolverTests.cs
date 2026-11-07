@@ -117,7 +117,58 @@ public sealed class RabbitMqSubscriptionResolverTests
             });
     }
 
-    private static RabbitMqSubscriptionResolver CreateResolver(IReadOnlyCollection<Type>? eventTypes = null, IReadOnlyCollection<Type>? commandTypes = null, string endpointName = "test-service")
+    [Fact]
+    public void Resolve_WithoutSubscriptionOverride_AssignsDefaultConsumerSettings()
+    {
+        var resolver = CreateResolver(
+            eventTypes: [typeof(ClientCreatedEvent)],
+            configureOptions: options =>
+            {
+                options.DefaultConsumerCount = 2;
+                options.DefaultPrefetchCount = 3;
+                options.DefaultDispatcherConcurrency = 4;
+            });
+
+        var subscription = Assert.Single(resolver.Resolve());
+
+        Assert.Equal(2, subscription.ConsumerSettings.ConsumerCount);
+        Assert.Equal((ushort)3, subscription.ConsumerSettings.PrefetchCount);
+        Assert.Equal((ushort)4, subscription.ConsumerSettings.DispatcherConcurrency);
+    }
+
+    [Fact]
+    public void Resolve_WithSubscriptionOverride_AssignsSettingsToMatchingExchangeOnly()
+    {
+        var resolver = CreateResolver(
+            eventTypes: [typeof(ClientCreatedEvent)],
+            commandTypes: [typeof(StartLongWorkJobCommand)],
+            configureOptions: options => options.ConfigureSubscription(
+                "commands/long-work-job",
+                subscription =>
+                {
+                    subscription.ConsumerCount = 2;
+                    subscription.PrefetchCount = 1;
+                    subscription.DispatcherConcurrency = 1;
+                }));
+
+        var subscriptions = resolver.Resolve().ToDictionary(x => x.ExchangeName);
+
+        var command = subscriptions["commands/long-work-job"];
+        Assert.Equal(2, command.ConsumerSettings.ConsumerCount);
+        Assert.Equal((ushort)1, command.ConsumerSettings.PrefetchCount);
+        Assert.Equal((ushort)1, command.ConsumerSettings.DispatcherConcurrency);
+
+        var @event = subscriptions["events/clients"];
+        Assert.Equal(1, @event.ConsumerSettings.ConsumerCount);
+        Assert.Equal((ushort)1, @event.ConsumerSettings.PrefetchCount);
+        Assert.Equal((ushort)1, @event.ConsumerSettings.DispatcherConcurrency);
+    }
+
+    private static RabbitMqSubscriptionResolver CreateResolver(
+        IReadOnlyCollection<Type>? eventTypes = null,
+        IReadOnlyCollection<Type>? commandTypes = null,
+        string endpointName = "test-service",
+        Action<RabbitMqConsumerOptions>? configureOptions = null)
     {
         var catalog = new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
         catalog
@@ -127,12 +178,15 @@ public sealed class RabbitMqSubscriptionResolverTests
             .SetupGet(x => x.CommandTypes)
             .Returns(commandTypes ?? Array.Empty<Type>());
 
+        var options = new RabbitMqConsumerOptions
+        {
+            EndpointName = endpointName
+        };
+        configureOptions?.Invoke(options);
+
         return new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(new RabbitMqConsumerOptions
-            {
-                EndpointName = endpointName
-            }));
+            Options.Create(options));
     }
 }

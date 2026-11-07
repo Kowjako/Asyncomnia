@@ -7,6 +7,7 @@ using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -158,5 +159,65 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         Assert.Equal(
             typeof(RabbitMqTopologyCreator),
             registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersMessageConsumerAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(RabbitMqMessageConsumer));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(typeof(RabbitMqMessageConsumer), registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersHandlerRegistrarAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(RabbitMqHandlerRegistrar));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(typeof(RabbitMqHandlerRegistrar), registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersQueueConsumerFactoryAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqQueueConsumerFactory));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(typeof(RabbitMqQueueConsumerFactory), registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersHostedServiceAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IHostedService)
+                 && x.ImplementationType == typeof(RabbitMqConsumerHostedService));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
     }
 }

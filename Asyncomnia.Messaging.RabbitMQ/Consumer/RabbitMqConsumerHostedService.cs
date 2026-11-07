@@ -13,15 +13,28 @@ internal sealed class RabbitMqConsumerHostedService(RabbitMqTopologyCreator topo
 
         try
         {
-            foreach (var subscription in subscriptions)
+            foreach (var declaredSubscription in subscriptions)
             {
-                var consumer = await consumerFactory.StartAsync(subscription, ct);
-                _consumers.Add(consumer);
+                var consumerCount = declaredSubscription.Subscription.ConsumerSettings.ConsumerCount;
+
+                for (var consumerIndex = 0; consumerIndex < consumerCount; consumerIndex++)
+                {
+                    var consumer = await consumerFactory.StartAsync(declaredSubscription, ct);
+                    _consumers.Add(consumer);
+                }
             }
         }
-        catch
+        catch (Exception startException)
         {
-            await DisposeConsumersAsync();
+            try
+            {
+                await DisposeConsumersAsync();
+            }
+            catch (Exception disposeException)
+            {
+                throw new AggregateException("RabbitMQ consumers could not be started or cleaned up.", startException, disposeException);
+            }
+
             throw;
         }
     }
@@ -33,11 +46,26 @@ internal sealed class RabbitMqConsumerHostedService(RabbitMqTopologyCreator topo
 
     private async Task DisposeConsumersAsync()
     {
+        List<Exception>? exceptions = null;
+
         for (var index = _consumers.Count - 1; index >= 0; index--)
         {
-            await _consumers[index].DisposeAsync();
+            try
+            {
+                await _consumers[index].DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                exceptions ??= [];
+                exceptions.Add(exception);
+            }
         }
 
         _consumers.Clear();
+
+        if (exceptions is not null)
+        {
+            throw new AggregateException("One or more RabbitMQ consumers could not be disposed.", exceptions);
+        }
     }
 }
