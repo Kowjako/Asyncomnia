@@ -2,8 +2,7 @@
 
 public sealed class RabbitMqConsumerOptions
 {
-    private readonly Dictionary<string, RabbitMqSubscriptionConsumerOptions> _subscriptions 
-        = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RabbitMqSubscriptionConsumerOptions> _subscriptions  = new(StringComparer.Ordinal);
 
     public string EndpointName { get; set; } = string.Empty;
 
@@ -21,6 +20,12 @@ public sealed class RabbitMqConsumerOptions
     /// Maximum number of messages processed concurrently by a single consumer
     /// </summary>
     public ushort DefaultDispatcherConcurrency { get; set; } = 1;
+
+    /// <summary>
+    /// Determines whether failed messages should be published to an
+    /// Asyncomnia dead-letter queue. Enabled by default.
+    /// </summary>
+    public bool DeadLetteringEnabled { get; set; } = true;
 
     public void ConfigureSubscription(string exchangeName, Action<RabbitMqSubscriptionConsumerOptions> configure)
     {

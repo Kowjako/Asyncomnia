@@ -1,12 +1,14 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
 using EasyNetQ.ConnectionString;
+using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -54,6 +56,9 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.TryAddSingleton<RabbitMqSubscriptionResolver>();
         builder.Services.TryAddSingleton<RabbitMqTopologyCreator>();
 
+        builder.Services.TryAddSingleton<RabbitMqDeadLetterRouteResolver>();
+        builder.Services.TryAddSingleton<IRabbitMqDeadLetterPublisher, RabbitMqDeadLetterPublisher>();
+
         builder.Services.TryAddSingleton<RabbitMqMessageConsumer>();
         builder.Services.TryAddSingleton<RabbitMqHandlerRegistrar>();
 
@@ -61,6 +66,7 @@ public static class RabbitMqMessagingBuilderExtensions
 
         builder.Services.AddHostedService<RabbitMqConsumerHostedService>();
 
+        builder.Services.Replace(ServiceDescriptor.Singleton<IConsumeErrorStrategy, RabbitMqConsumeErrorStrategy>());
 
         return builder;
     }
