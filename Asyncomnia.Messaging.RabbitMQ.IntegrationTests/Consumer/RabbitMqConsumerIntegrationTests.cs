@@ -7,6 +7,7 @@ using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.TestDoubles;
 using EasyNetQ;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RabbitMQ.Client.Exceptions;
 
 namespace Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Consumer;
 
@@ -244,6 +245,51 @@ public sealed class RabbitMqConsumerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task HandlerFailure_CreatesDeadLetterQueueAndPublishesMessage()
+    {
+        var endpointName = CreateEndpointName();
+        using var host = CreateHost(
+            endpointName,
+            _ => { },
+            messaging => messaging
+                .RegisterEventHandler<
+                    ClientCreatedEvent,
+                    FailingClientCreatedEventHandler>());
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await host.StartAsync(ct);
+
+        try
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            var publisher = scope.ServiceProvider
+                .GetRequiredService<IEventPublisher>();
+
+            await publisher.PublishAsync(
+                new ClientCreatedEvent(Guid.NewGuid(), "Acme"),
+                token: ct);
+
+            var advancedBus = host.Services
+                .GetRequiredService<IAdvancedBus>();
+            var deadLetterQueueName =
+                $"deadletter/events/clients/subscription/{endpointName}";
+            var deadLetterStats = await WaitForQueueToBeCreatedAsync(
+                advancedBus,
+                deadLetterQueueName,
+                stats => stats.MessagesCount == 1,
+                ct);
+
+            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
+            Assert.Equal((ulong)0, deadLetterStats.ConsumersCount);
+        }
+        finally
+        {
+            await StopHostAsync(host);
+        }
+    }
+
     private IHost CreateHost(string endpointName, Action<IServiceCollection> configureServices, Action<AsyncomniaMessagingBuilder> configureMessaging,
         Action<RabbitMqConsumerOptions>? configureConsumer = null)
     {
@@ -283,6 +329,33 @@ public sealed class RabbitMqConsumerIntegrationTests
             if (condition(stats))
             {
                 return stats;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), ct);
+        }
+    }
+
+    private static async Task<QueueStats> WaitForQueueToBeCreatedAsync(IAdvancedBus advancedBus, string queueName,
+        Func<QueueStats, bool> condition, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var stats = await advancedBus.GetQueueStatsAsync(
+                    queueName,
+                    ct);
+
+                if (condition(stats))
+                {
+                    return stats;
+                }
+            }
+            catch (OperationInterruptedException) when (!ct.IsCancellationRequested)
+            {
+                // The queue is created lazily after the handler fails.
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(50), ct);

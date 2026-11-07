@@ -5,6 +5,14 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Configuration;
 public sealed class RabbitMqConsumerOptionsTests
 {
     [Fact]
+    public void DeadLetteringEnabled_ByDefault_IsTrue()
+    {
+        var options = new RabbitMqConsumerOptions();
+
+        Assert.True(options.DeadLetteringEnabled);
+    }
+
+    [Fact]
     public void GetConsumerSettings_WithoutOverride_ReturnsDefaults()
     {
         var options = new RabbitMqConsumerOptions

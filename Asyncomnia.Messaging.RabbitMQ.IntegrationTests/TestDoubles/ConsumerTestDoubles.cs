@@ -29,6 +29,15 @@ internal sealed class ClientCreatedEventHandler(MessageProbe<ClientCreatedEvent>
     }
 }
 
+internal sealed class FailingClientCreatedEventHandler : IEventHandler<ClientCreatedEvent>
+{
+    public Task HandleAsync(ClientCreatedEvent message, MessageMetadata metadata, CancellationToken cancellationToken)
+    {
+        return Task.FromException(
+            new InvalidOperationException("Handler failed for integration test"));
+    }
+}
+
 internal sealed class StartLongWorkJobCommandHandler(MessageProbe<StartLongWorkJobCommand> probe) : ICommandHandler<StartLongWorkJobCommand>
 {
     public Task HandleAsync(StartLongWorkJobCommand message, MessageMetadata metadata, CancellationToken cancellationToken)

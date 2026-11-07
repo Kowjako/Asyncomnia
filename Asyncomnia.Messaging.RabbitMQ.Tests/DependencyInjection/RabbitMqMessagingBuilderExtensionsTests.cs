@@ -1,11 +1,13 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
+using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -133,7 +135,10 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
         builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        {
+            options.EndpointName = "billing-service";
+            options.DeadLetteringEnabled = false;
+        });
         using var provider = services.BuildServiceProvider();
 
         var options = provider
@@ -141,6 +146,46 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
             .Value;
 
         Assert.Equal("billing-service", options.EndpointName);
+        Assert.False(options.DeadLetteringEnabled);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersDeadLetterPublisherAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqDeadLetterPublisher));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqDeadLetterPublisher),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_ReplacesEasyNetQConsumeErrorStrategy()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder
+            .UseRabbitMq(options =>
+                options.ConnectionString = "host=localhost")
+            .UseRabbitMqConsumer(options =>
+                options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IConsumeErrorStrategy));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqConsumeErrorStrategy),
+            registration.ImplementationType);
     }
 
     [Fact]
