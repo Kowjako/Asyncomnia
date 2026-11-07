@@ -6,5 +6,5 @@ internal sealed record RabbitMqSubscription
 
     public string QueueName { get; init; } = null!;
 
-    public IReadOnlyCollection<RabbitMqBinding> Bindings { get; set; } = [];
+    public IReadOnlyCollection<RabbitMqBinding> Bindings { get; init; } = [];
 }

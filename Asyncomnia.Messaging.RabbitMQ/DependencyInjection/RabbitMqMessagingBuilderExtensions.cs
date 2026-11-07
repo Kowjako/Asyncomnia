@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
@@ -48,6 +49,8 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqConsumerOptions>, RabbitMqConsumerOptionsValidator>());
 
         builder.Services.AddOptions<RabbitMqConsumerOptions>().Configure(configure).ValidateOnStart();
+
+        builder.Services.TryAddSingleton<RabbitMqSubscriptionResolver>();
 
         return builder;
     }

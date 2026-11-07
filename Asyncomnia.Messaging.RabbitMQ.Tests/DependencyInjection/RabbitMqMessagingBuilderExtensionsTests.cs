@@ -1,5 +1,6 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
@@ -104,5 +105,39 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         Assert.Equal(
             defaultConventions.TopicNamingConvention(typeof(NonAsyncomniaMessage)),
             routingKey);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersSubscriptionResolverAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(RabbitMqSubscriptionResolver));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqSubscriptionResolver),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_ConfiguresConsumerOptions()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider
+            .GetRequiredService<IOptions<RabbitMqConsumerOptions>>()
+            .Value;
+
+        Assert.Equal("billing-service", options.EndpointName);
     }
 }
