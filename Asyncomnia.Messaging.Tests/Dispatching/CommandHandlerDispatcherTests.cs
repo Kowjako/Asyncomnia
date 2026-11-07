@@ -14,7 +14,8 @@ public sealed class CommandHandlerDispatcherTests
         services.AddAsyncomniaMessaging();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var envelope = TestEnvelopeFactory.Create(new TestCommand("value"));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -32,7 +33,8 @@ public sealed class CommandHandlerDispatcherTests
             .RegisterCommandHandler<TestCommand, FirstCommandHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
         var envelope = TestEnvelopeFactory.Create(new TestCommand("value"));
 
@@ -52,7 +54,8 @@ public sealed class CommandHandlerDispatcherTests
             .RegisterCommandHandler<TestCommand, SecondCommandHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
         var envelope = TestEnvelopeFactory.Create(new TestCommand("value"));
 

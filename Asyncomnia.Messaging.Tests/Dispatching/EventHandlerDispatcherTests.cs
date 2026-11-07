@@ -14,7 +14,8 @@ public sealed class EventHandlerDispatcherTests
         services.AddAsyncomniaMessaging();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var envelope = TestEnvelopeFactory.Create(new TestEvent("value"));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -32,7 +33,8 @@ public sealed class EventHandlerDispatcherTests
             .RegisterEventHandler<TestEvent, FirstEventHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
         var envelope = TestEnvelopeFactory.Create(new TestEvent("value"));
 
@@ -52,7 +54,8 @@ public sealed class EventHandlerDispatcherTests
             .RegisterEventHandler<TestEvent, SecondEventHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
         var envelope = TestEnvelopeFactory.Create(new TestEvent("value"));
 
@@ -64,7 +67,7 @@ public sealed class EventHandlerDispatcherTests
     }
 
     [Fact]
-    public async Task DispatchEventAsync_CreatesNewScopeForEveryDispatch()
+    public async Task DispatchEventAsync_UsesHandlersFromCurrentScope()
     {
         var services = CreateServices();
         services
@@ -72,14 +75,22 @@ public sealed class EventHandlerDispatcherTests
             .RegisterEventHandler<TestEvent, FirstEventHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
 
-        await dispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("first")));
-        await dispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("second")));
+        await using var firstScope = provider.CreateAsyncScope();
+        var firstDispatcher = firstScope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
 
-        Assert.Equal(2, probe.HandlerInstances.Count);
-        Assert.Equal(2, probe.HandlerInstances.Distinct().Count());
+        await firstDispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("first")));
+        await firstDispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("second")));
+
+        await using var secondScope = provider.CreateAsyncScope();
+        var secondDispatcher = secondScope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
+
+        await secondDispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("third")));
+
+        Assert.Equal(3, probe.HandlerInstances.Count);
+        Assert.Equal(probe.HandlerInstances[0], probe.HandlerInstances[1]);
+        Assert.NotEqual(probe.HandlerInstances[0], probe.HandlerInstances[2]);
     }
 
     [Fact]
@@ -92,7 +103,8 @@ public sealed class EventHandlerDispatcherTests
             .RegisterEventHandler<TestEvent, FirstEventHandler>();
 
         await using var provider = services.BuildServiceProvider();
-        var dispatcher = provider.GetRequiredService<IMessageHandlerDispatcher>();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IMessageHandlerDispatcher>();
         var probe = provider.GetRequiredService<HandlerProbe>();
 
         await dispatcher.DispatchEventAsync(TestEnvelopeFactory.Create(new TestEvent("value")));

@@ -3,16 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Asyncomnia.Messaging.Dispatching;
 
-internal sealed class MessageHandlerDispatcher(IServiceScopeFactory scopeFactory) : IMessageHandlerDispatcher
+internal sealed class MessageHandlerDispatcher(IServiceProvider serviceProvider) : IMessageHandlerDispatcher
 {
     public async Task DispatchEventAsync<TEvent>(MessageEnvelope<TEvent> envelope, CancellationToken ct = default)
         where TEvent: class, IEvent
     {
         ArgumentNullException.ThrowIfNull(envelope, nameof(envelope));
 
-        await using var scope = scopeFactory.CreateAsyncScope();
-
-        var handlers = scope.ServiceProvider.GetServices<IEventHandler<TEvent>>().ToArray();
+        var handlers = serviceProvider.GetServices<IEventHandler<TEvent>>().ToArray();
 
         if (handlers.Length == 0)
         {
@@ -32,9 +30,7 @@ internal sealed class MessageHandlerDispatcher(IServiceScopeFactory scopeFactory
     {
         ArgumentNullException.ThrowIfNull(envelope, nameof(envelope));
 
-        await using var scope = scopeFactory.CreateAsyncScope();
-
-        var handlers = scope.ServiceProvider.GetServices<ICommandHandler<TCommand>>().ToArray();
+        var handlers = serviceProvider.GetServices<ICommandHandler<TCommand>>().ToArray();
 
         if (handlers.Length == 0)
         {
