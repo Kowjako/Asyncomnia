@@ -31,7 +31,8 @@ internal sealed class RabbitMqSubscriptionResolver(IMessageHandlerCatalog catalo
                                  QueueName = $"{g.Key}/subscription/{_options.EndpointName}",
                                  Bindings = g.Select(x => new RabbitMqBinding(x.Route.RoutingKey, x.MessageType))
                                              .OrderBy(x => x.RoutingKey, StringComparer.Ordinal)
-                                             .ToArray()
+                                             .ToArray(),
+                                 ConsumerSettings = _options.GetConsumerSettings(g.Key)
                              })
                              .OrderBy(x => x.ExchangeName, StringComparer.Ordinal)
                              .ToArray();
