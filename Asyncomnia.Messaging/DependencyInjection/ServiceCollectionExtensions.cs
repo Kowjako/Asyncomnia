@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Dispatching;
+using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<ICommandSender, CommandSender>();
 
         services.TryAddScoped<IOutboundMessagePipeline, TransportMessagePipeline>();
+
+        services.TryAddSingleton<IMessageHandlerCatalog, MessageHandlerCatalog>();
 
         return new AsyncomniaMessagingBuilder(services);
     }

@@ -40,6 +40,18 @@ public static class RabbitMqMessagingBuilderExtensions
         return builder;
     }
 
+    public static AsyncomniaMessagingBuilder UseRabbitMqConsumer(this AsyncomniaMessagingBuilder builder, Action<RabbitMqConsumerOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqConsumerOptions>, RabbitMqConsumerOptionsValidator>());
+
+        builder.Services.AddOptions<RabbitMqConsumerOptions>().Configure(configure).ValidateOnStart();
+
+        return builder;
+    }
+
     private static void RegisterAsyncomniaRoutingConventions(this IServiceCollection services)
     {
         services.Replace(ServiceDescriptor.Singleton<IConventions>(serviceProvider =>

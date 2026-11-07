@@ -33,6 +33,9 @@ public static class HandlerScanningExtensions
             foreach (var contract in contracts)
             {
                 builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped(contract, implementationType));
+
+                var messageType = contract.GenericTypeArguments[0];
+                builder.Services.TryAddMessageHandlerType(messageType);
             }
         }
 
