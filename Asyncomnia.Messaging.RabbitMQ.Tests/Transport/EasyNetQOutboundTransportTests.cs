@@ -152,7 +152,7 @@ public sealed class EasyNetQOutboundTransportTests
             advancedBus.Object,
             exchangeDeclareStrategy.Object,
             deliveryModeStrategy.Object,
-            new RabbitMqRouteResolver());
+            new MessageRouteResolver());
     }
 
     private static Exchange CreateExchange(string name)

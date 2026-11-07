@@ -5,17 +5,17 @@ using Asyncomnia.Messaging.Routing;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Routing;
 
-internal sealed class RabbitMqRouteResolver
+internal sealed class MessageRouteResolver
 {
-    private readonly ConcurrentDictionary<Type, RabbitMqRoute> _routes = new();
+    private readonly ConcurrentDictionary<Type, MessageRoute> _routes = new();
 
-    public RabbitMqRoute Resolve(Type messageType)
+    public MessageRoute Resolve(Type messageType)
     {
         ArgumentNullException.ThrowIfNull(messageType);
         return _routes.GetOrAdd(messageType, CreateRoute);
     }
 
-    private static RabbitMqRoute CreateRoute(Type messageType)
+    private static MessageRoute CreateRoute(Type messageType)
     {
         var attribute = messageType.GetCustomAttribute<MessageRouteAttribute>()
             ?? throw new InvalidOperationException($"Message type '{messageType.FullName}' must define MessageRouteAttribute.");
@@ -33,7 +33,7 @@ internal sealed class RabbitMqRouteResolver
 
         var routingKey = attribute.RoutingKey ?? ToKebabCase(messageType.Name);
 
-        return new RabbitMqRoute(exchangeName, routingKey);
+        return new MessageRoute(exchangeName, routingKey);
     }
 
     private static string ToKebabCase(string value)

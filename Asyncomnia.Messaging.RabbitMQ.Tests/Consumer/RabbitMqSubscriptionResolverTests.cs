@@ -129,7 +129,7 @@ public sealed class RabbitMqSubscriptionResolverTests
 
         return new RabbitMqSubscriptionResolver(
             catalog.Object,
-            new RabbitMqRouteResolver(),
+            new MessageRouteResolver(),
             Options.Create(new RabbitMqConsumerOptions
             {
                 EndpointName = endpointName

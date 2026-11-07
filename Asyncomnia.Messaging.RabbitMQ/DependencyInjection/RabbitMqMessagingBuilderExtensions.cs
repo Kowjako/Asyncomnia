@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
@@ -32,7 +33,7 @@ public static class RabbitMqMessagingBuilderExtensions
             return configuration;
         });
 
-        builder.Services.TryAddSingleton<RabbitMqRouteResolver>();
+        builder.Services.TryAddSingleton<MessageRouteResolver>();
 
         builder.Services.RegisterAsyncomniaRoutingConventions();
 
@@ -51,6 +52,7 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.AddOptions<RabbitMqConsumerOptions>().Configure(configure).ValidateOnStart();
 
         builder.Services.TryAddSingleton<RabbitMqSubscriptionResolver>();
+        builder.Services.TryAddSingleton<RabbitMqTopologyCreator>();
 
         return builder;
     }
@@ -60,7 +62,7 @@ public static class RabbitMqMessagingBuilderExtensions
         services.Replace(ServiceDescriptor.Singleton<IConventions>(serviceProvider =>
         {
             var typeNameSerializer = serviceProvider.GetRequiredService<ITypeNameSerializer>();
-            var routeResolver = serviceProvider.GetRequiredService<RabbitMqRouteResolver>();
+            var routeResolver = serviceProvider.GetRequiredService<MessageRouteResolver>();
 
             var conventions = new Conventions(typeNameSerializer);
 

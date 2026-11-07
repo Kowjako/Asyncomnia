@@ -4,9 +4,9 @@ using Asyncomnia.Messaging.Routing;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Routing;
 
-public sealed class RabbitMqRouteResolverTests
+public sealed class MessageRouteResolverTests
 {
-    private readonly RabbitMqRouteResolver _resolver = new();
+    private readonly MessageRouteResolver _resolver = new();
 
     [Fact]
     public void Resolve_ForEvent_ReturnsEventsExchangeAndKebabCaseRoutingKey()

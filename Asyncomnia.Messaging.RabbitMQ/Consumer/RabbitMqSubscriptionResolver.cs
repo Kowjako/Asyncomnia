@@ -6,12 +6,12 @@ using Microsoft.Extensions.Options;
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer;
 
 internal sealed class RabbitMqSubscriptionResolver(IMessageHandlerCatalog catalog, 
-    RabbitMqRouteResolver routeResolver, IOptions<RabbitMqConsumerOptions> options)
+    MessageRouteResolver routeResolver, IOptions<RabbitMqConsumerOptions> options)
 {
     private readonly IMessageHandlerCatalog _handlerCatalog = catalog
         ?? throw new ArgumentNullException(nameof(catalog));
 
-    private readonly RabbitMqRouteResolver _routeResolver = routeResolver
+    private readonly MessageRouteResolver _routeResolver = routeResolver
         ?? throw new ArgumentNullException(nameof(routeResolver));
 
     private readonly RabbitMqConsumerOptions _options = options?.Value

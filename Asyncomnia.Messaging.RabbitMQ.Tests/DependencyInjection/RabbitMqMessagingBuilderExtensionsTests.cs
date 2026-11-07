@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
@@ -139,5 +140,23 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
             .Value;
 
         Assert.Equal("billing-service", options.EndpointName);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersTopologyCreatorAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(RabbitMqTopologyCreator));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqTopologyCreator),
+            registration.ImplementationType);
     }
 }

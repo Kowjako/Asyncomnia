@@ -7,7 +7,7 @@ namespace Asyncomnia.Messaging.RabbitMQ.Transport;
 internal sealed class EasyNetQOutboundTransport(IAdvancedBus advancedBus,
     IExchangeDeclareStrategy exchangeDeclareStrategy, 
     IMessageDeliveryModeStrategy messageDeliveryModeStrategy,
-    RabbitMqRouteResolver routeResolver) : IOutboundTransport
+    MessageRouteResolver routeResolver) : IOutboundTransport
 {
     private readonly IAdvancedBus _advancedBus = advancedBus
         ?? throw new ArgumentNullException(nameof(advancedBus));
@@ -18,7 +18,7 @@ internal sealed class EasyNetQOutboundTransport(IAdvancedBus advancedBus,
     private readonly IMessageDeliveryModeStrategy _messageDeliveryModeStrategy = messageDeliveryModeStrategy
         ?? throw new ArgumentNullException(nameof(messageDeliveryModeStrategy));
 
-    private readonly RabbitMqRouteResolver _routeResolver = routeResolver
+    private readonly MessageRouteResolver _routeResolver = routeResolver
         ?? throw new ArgumentNullException(nameof(routeResolver));
 
     public async Task DispatchAsync(IMessage message, MessageMetadata metadata, CancellationToken token = default)
