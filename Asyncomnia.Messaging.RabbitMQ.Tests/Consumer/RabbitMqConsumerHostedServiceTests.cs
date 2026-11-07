@@ -262,6 +262,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
             advancedBus.Object,
             exchangeDeclareStrategy.Object,
             resolver);
+
         var service = new RabbitMqConsumerHostedService(
             topologyCreator,
             consumerFactory.Object);

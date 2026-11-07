@@ -10,3 +10,6 @@ internal sealed record ClientContractSignedEvent(Guid ClientId, string ContractN
 
 [MessageRoute("unhandled-jobs")]
 internal sealed record StartUnhandledJobCommand(Guid JobId) : ICommand;
+
+[MessageRoute("long-work-job")]
+internal sealed record StartLongWorkJobCommand(Guid JobId) : ICommand;
