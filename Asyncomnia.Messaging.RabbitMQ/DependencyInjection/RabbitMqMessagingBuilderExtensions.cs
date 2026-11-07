@@ -54,6 +54,14 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.TryAddSingleton<RabbitMqSubscriptionResolver>();
         builder.Services.TryAddSingleton<RabbitMqTopologyCreator>();
 
+        builder.Services.TryAddSingleton<RabbitMqMessageConsumer>();
+        builder.Services.TryAddSingleton<RabbitMqHandlerRegistrar>();
+
+        builder.Services.TryAddSingleton<IRabbitMqQueueConsumerFactory, RabbitMqQueueConsumerFactory>();
+
+        builder.Services.AddHostedService<RabbitMqConsumerHostedService>();
+
+
         return builder;
     }
 
