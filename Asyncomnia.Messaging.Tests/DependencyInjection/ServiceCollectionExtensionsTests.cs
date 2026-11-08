@@ -2,6 +2,7 @@ using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Outbound;
+using Asyncomnia.Messaging.Retry;
 using Asyncomnia.Messaging.Tests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -81,5 +82,35 @@ public sealed class ServiceCollectionExtensionsTests
             x => x.ServiceType == typeof(IOutboundMessagePipeline));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
         Assert.Same(pipeline, registration.ImplementationInstance);
+    }
+
+    [Fact]
+    public void AddAsyncomniaMessaging_RegistersInMemoryRetryExecutorAsSingleton()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging();
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IInMemoryRetryExecutor));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(InMemoryRetryExecutor),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void AddAsyncomniaMessaging_CanResolveDispatcherWithoutLoggingRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddAsyncomniaMessaging();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var dispatcher = scope.ServiceProvider
+            .GetRequiredService<IMessageHandlerDispatcher>();
+
+        Assert.NotNull(dispatcher);
     }
 }

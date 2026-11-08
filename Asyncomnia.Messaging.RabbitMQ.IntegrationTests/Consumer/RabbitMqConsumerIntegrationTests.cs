@@ -291,6 +291,44 @@ public sealed class RabbitMqConsumerIntegrationTests
     }
 
     [Fact]
+    public async Task TransientHandlerFailure_WithInMemoryRetries_SucceedsWithoutBrokerRedelivery()
+    {
+        var endpointName = CreateEndpointName();
+        var probe = new InMemoryRetryProbe(failuresBeforeSuccess: 2);
+        using var host = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterEventHandler<
+                    ClientCreatedEvent,
+                    InMemoryRetryClientCreatedEventHandler>()
+                .UseInMemoryRetries(options => options.Immediately(2)));
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await host.StartAsync(ct);
+
+        try
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            var publisher = scope.ServiceProvider
+                .GetRequiredService<IEventPublisher>();
+            await publisher.PublishAsync(
+                new ClientCreatedEvent(Guid.NewGuid(), "Acme"),
+                token: ct);
+
+            var attempts = await probe.WaitForSuccessAsync(ct);
+
+            Assert.Equal(3, attempts);
+            Assert.Equal(3, probe.Attempts);
+        }
+        finally
+        {
+            await StopHostAsync(host);
+        }
+    }
+
+    [Fact]
     public async Task HandlerFailure_WithRepeatedBrokerRetryDelay_RetriesAndThenDeadLettersMessage()
     {
         const int expectedAttempts = 3;
@@ -354,6 +392,63 @@ public sealed class RabbitMqConsumerIntegrationTests
                 stats => stats.MessagesCount == 0,
                 ct);
             Assert.Equal((ulong)0, retryQueueStats.MessagesCount);
+        }
+        finally
+        {
+            await StopHostAsync(host);
+        }
+    }
+
+    [Fact]
+    public async Task HandlerFailure_WithInMemoryAndBrokerRetries_ExhaustsBothStrategiesBeforeDeadLettering()
+    {
+        const int expectedAttempts = 6;
+        var endpointName = CreateEndpointName();
+        var probe = new BrokerRetryProbe(expectedAttempts);
+        using var host = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterEventHandler<
+                    ClientCreatedEvent,
+                    BrokerRetryClientCreatedEventHandler>()
+                .UseInMemoryRetries(options => options.Immediately(2)),
+            options =>
+            {
+                options.BrokerRetriesEnabled = true;
+                options.BrokerRetryDelays =
+                [
+                    TimeSpan.FromMilliseconds(100)
+                ];
+            });
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await host.StartAsync(ct);
+
+        try
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            var publisher = scope.ServiceProvider
+                .GetRequiredService<IEventPublisher>();
+            await publisher.PublishAsync(
+                new ClientCreatedEvent(Guid.NewGuid(), "Acme"),
+                token: ct);
+
+            var attempts = await probe.WaitForExpectedAttemptsAsync(ct);
+            var advancedBus = host.Services
+                .GetRequiredService<IAdvancedBus>();
+            var deadLetterQueueName =
+                $"deadletter/events/clients/subscription/{endpointName}";
+            var deadLetterStats = await WaitForQueueToBeCreatedAsync(
+                advancedBus,
+                deadLetterQueueName,
+                stats => stats.MessagesCount == 1,
+                ct);
+
+            Assert.Equal(expectedAttempts, attempts);
+            Assert.Equal(expectedAttempts, probe.Attempts);
+            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
         }
         finally
         {

@@ -74,6 +74,48 @@ internal sealed class BrokerRetryClientCreatedEventHandler(BrokerRetryProbe prob
     }
 }
 
+internal sealed class InMemoryRetryProbe(int failuresBeforeSuccess)
+{
+    private readonly TaskCompletionSource<int> _succeeded =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private int _attempts;
+
+    public int Attempts => Volatile.Read(ref _attempts);
+
+    public Task HandleAsync()
+    {
+        var attempts = Interlocked.Increment(ref _attempts);
+
+        if (attempts <= failuresBeforeSuccess)
+        {
+            return Task.FromException(
+                new InvalidOperationException(
+                    "Handler failed for in-memory retry integration test"));
+        }
+
+        _succeeded.TrySetResult(attempts);
+        return Task.CompletedTask;
+    }
+
+    public Task<int> WaitForSuccessAsync(CancellationToken ct)
+    {
+        return _succeeded.Task.WaitAsync(ct);
+    }
+}
+
+internal sealed class InMemoryRetryClientCreatedEventHandler(
+    InMemoryRetryProbe probe) : IEventHandler<ClientCreatedEvent>
+{
+    public Task HandleAsync(
+        ClientCreatedEvent message,
+        MessageMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        return probe.HandleAsync();
+    }
+}
+
 internal sealed class StartLongWorkJobCommandHandler(MessageProbe<StartLongWorkJobCommand> probe) : ICommandHandler<StartLongWorkJobCommand>
 {
     public Task HandleAsync(StartLongWorkJobCommand message, MessageMetadata metadata, CancellationToken cancellationToken)

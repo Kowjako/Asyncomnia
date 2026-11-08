@@ -1,9 +1,10 @@
 ﻿using Asyncomnia.Messaging.Handlers;
+using Asyncomnia.Messaging.Retry;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Asyncomnia.Messaging.Dispatching;
 
-internal sealed class MessageHandlerDispatcher(IServiceProvider serviceProvider) : IMessageHandlerDispatcher
+internal sealed class MessageHandlerDispatcher(IServiceProvider serviceProvider, IInMemoryRetryExecutor retryExecutor) : IMessageHandlerDispatcher
 {
     public async Task DispatchEventAsync<TEvent>(MessageEnvelope<TEvent> envelope, CancellationToken ct = default)
         where TEvent: class, IEvent
@@ -19,9 +20,8 @@ internal sealed class MessageHandlerDispatcher(IServiceProvider serviceProvider)
 
         foreach (var handler in handlers)
         {
-            ct.ThrowIfCancellationRequested();
-
-            await handler.HandleAsync(envelope.Message, envelope.Metadata, ct);
+            await retryExecutor.ExecuteAsync(envelope, handler.GetType(),
+                retryToken => handler.HandleAsync(envelope.Message, envelope.Metadata, retryToken), ct);
         }
     }
 
@@ -42,6 +42,7 @@ internal sealed class MessageHandlerDispatcher(IServiceProvider serviceProvider)
             throw new InvalidOperationException($"More than one command handler is registered for '{typeof(TCommand).FullName}'");
         }
 
-        await handlers[0].HandleAsync(envelope.Message, envelope.Metadata, ct);
+        await retryExecutor.ExecuteAsync(envelope, handlers[0].GetType(),
+            retryToken => handlers[0].HandleAsync(envelope.Message, envelope.Metadata, retryToken), ct);
     }
 }
