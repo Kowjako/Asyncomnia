@@ -1,15 +1,21 @@
-﻿using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+﻿using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Microsoft.Extensions.Hosting;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer;
 
-internal sealed class RabbitMqConsumerHostedService(RabbitMqTopologyCreator topologyCreator, IRabbitMqQueueConsumerFactory consumerFactory) : IHostedService
+internal sealed class RabbitMqConsumerHostedService(
+    RabbitMqTopologyCreator topologyCreator,
+    IRabbitMqRetryTopologyCreator retryTopologyCreator,
+    IRabbitMqQueueConsumerFactory consumerFactory) : IHostedService
 {
     private readonly List<IAsyncDisposable> _consumers = [];
 
     public async Task StartAsync(CancellationToken ct)
     {
         var subscriptions = await topologyCreator.DeclareAsync(ct);
+
+        await retryTopologyCreator.DeclareAsync(ct);
 
         try
         {

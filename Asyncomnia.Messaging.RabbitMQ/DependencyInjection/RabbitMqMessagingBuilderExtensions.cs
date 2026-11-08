@@ -2,6 +2,7 @@
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
@@ -58,6 +59,9 @@ public static class RabbitMqMessagingBuilderExtensions
 
         builder.Services.TryAddSingleton<RabbitMqDeadLetterRouteResolver>();
         builder.Services.TryAddSingleton<IRabbitMqDeadLetterPublisher, RabbitMqDeadLetterPublisher>();
+
+        builder.Services.TryAddSingleton<IRabbitMqRetryTopologyCreator, RabbitMqRetryTopologyCreator>();
+        builder.Services.TryAddSingleton<IRabbitMqDelayedRetryPublisher, RabbitMqDelayedRetryPublisher>();
 
         builder.Services.TryAddSingleton<RabbitMqMessageConsumer>();
         builder.Services.TryAddSingleton<RabbitMqHandlerRegistrar>();

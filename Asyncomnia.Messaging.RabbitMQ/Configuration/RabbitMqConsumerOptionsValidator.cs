@@ -50,6 +50,19 @@ internal sealed class RabbitMqConsumerOptionsValidator : IValidateOptions<Rabbit
             }
         }
 
+        if (options.BrokerRetriesEnabled)
+        {
+            if (options.BrokerRetryDelays is null || options.BrokerRetryDelays.Count == 0)
+            {
+                return ValidateOptionsResult.Fail("RabbitMqConsumerOptions:BrokerRetryDelays cannot be empty when broker retries are enabled");
+            }
+
+            if (options.BrokerRetryDelays.Any(t => t < TimeSpan.FromMilliseconds(1)))
+            {
+                return ValidateOptionsResult.Fail("RabbitMqConsumerOptions:BrokerRetryDelays all delays must be at least 1ms");
+            }
+        }
+
         return ValidateOptionsResult.Success;
     }
 }

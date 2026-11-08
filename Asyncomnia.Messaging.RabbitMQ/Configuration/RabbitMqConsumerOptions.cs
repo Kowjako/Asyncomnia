@@ -27,6 +27,22 @@ public sealed class RabbitMqConsumerOptions
     /// </summary>
     public bool DeadLetteringEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Determines whether failed messages should be retried through
+    /// broker-managed retry queues before dead-lettering.
+    /// </summary>
+    public bool BrokerRetriesEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Ordered delays applied before a failed message is dead-lettered.
+    /// </summary>
+    public IReadOnlyList<TimeSpan> BrokerRetryDelays { get; set; } =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(5)
+    ];
+
     public void ConfigureSubscription(string exchangeName, Action<RabbitMqSubscriptionConsumerOptions> configure)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exchangeName);
