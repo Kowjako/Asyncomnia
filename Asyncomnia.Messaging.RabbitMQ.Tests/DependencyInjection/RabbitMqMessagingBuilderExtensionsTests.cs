@@ -169,6 +169,25 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseRabbitMqConsumer_RegistersDeadLetterTopologyCreatorAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType ==
+                typeof(IRabbitMqDeadLetterTopologyCreator));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqDeadLetterTopologyCreator),
+            registration.ImplementationType);
+    }
+
+    [Fact]
     public void UseRabbitMqConsumer_RegistersRetryTopologyCreatorAsSingleton()
     {
         var services = new ServiceCollection();

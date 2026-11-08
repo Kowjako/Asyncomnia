@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
@@ -103,6 +104,28 @@ public sealed class RabbitMqConsumerHostedServiceTests
 
         Assert.Same(topologyException, exception);
         consumerFactory.VerifyNoOtherCalls();
+        fixture.VerifyTopology();
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenDeadLetterTopologyDeclarationFails_DoesNotDeclareRetryTopologyOrStartConsumers()
+    {
+        var consumerFactory =
+            new Mock<IRabbitMqQueueConsumerFactory>(MockBehavior.Strict);
+        var topologyException = new InvalidOperationException(
+            "dead-letter topology declaration failed");
+        var fixture = CreateFixture(
+            consumerFactory,
+            new RabbitMqConsumerOptions { EndpointName = "worker-service" },
+            eventTypes: [typeof(ClientCreatedEvent)],
+            deadLetterTopologyException: topologyException);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.StartAsync(CancellationToken.None));
+
+        Assert.Same(topologyException, exception);
+        consumerFactory.VerifyNoOtherCalls();
+        fixture.RetryTopologyCreator.VerifyNoOtherCalls();
         fixture.VerifyTopology();
     }
 
@@ -234,7 +257,8 @@ public sealed class RabbitMqConsumerHostedServiceTests
 
     private static HostedServiceFixture CreateFixture(Mock<IRabbitMqQueueConsumerFactory> consumerFactory, RabbitMqConsumerOptions options,
         IReadOnlyCollection<Type>? eventTypes = null, IReadOnlyCollection<Type>? commandTypes = null,
-        Exception? retryTopologyException = null)
+        Exception? retryTopologyException = null,
+        Exception? deadLetterTopologyException = null)
     {
         var catalog = new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
         catalog
@@ -287,14 +311,39 @@ public sealed class RabbitMqConsumerHostedServiceTests
             resolver);
         var retryTopologyCreator =
             new Mock<IRabbitMqRetryTopologyCreator>(MockBehavior.Strict);
+        var deadLetterTopologyCreator =
+            new Mock<IRabbitMqDeadLetterTopologyCreator>(
+                MockBehavior.Strict);
 
-        if (retryTopologyException is null)
+        if (deadLetterTopologyException is null)
+        {
+            deadLetterTopologyCreator
+                .Setup(x => x.DeclareAsync(
+                    It.Is<IReadOnlyCollection<
+                        RabbitMqDeclaredSubscription>>(declared =>
+                        declared.Count == subscriptions.Count),
+                    CancellationToken.None))
+                .Returns(Task.CompletedTask);
+        }
+        else
+        {
+            deadLetterTopologyCreator
+                .Setup(x => x.DeclareAsync(
+                    It.IsAny<IReadOnlyCollection<
+                        RabbitMqDeclaredSubscription>>(),
+                    CancellationToken.None))
+                .ThrowsAsync(deadLetterTopologyException);
+        }
+
+        if (deadLetterTopologyException is null &&
+            retryTopologyException is null)
         {
             retryTopologyCreator
                 .Setup(x => x.DeclareAsync(CancellationToken.None))
                 .Returns(Task.CompletedTask);
         }
-        else
+        else if (deadLetterTopologyException is null &&
+            retryTopologyException is not null)
         {
             retryTopologyCreator
                 .Setup(x => x.DeclareAsync(CancellationToken.None))
@@ -304,13 +353,15 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var service = new RabbitMqConsumerHostedService(
             topologyCreator,
             retryTopologyCreator.Object,
+            deadLetterTopologyCreator.Object,
             consumerFactory.Object);
 
         return new HostedServiceFixture(
             service,
             advancedBus,
             exchangeDeclareStrategy,
-            retryTopologyCreator);
+            retryTopologyCreator,
+            deadLetterTopologyCreator);
     }
 
     private static Exchange CreateExchange(string name)
@@ -337,13 +388,15 @@ public sealed class RabbitMqConsumerHostedServiceTests
         RabbitMqConsumerHostedService Service,
         Mock<IAdvancedBus> AdvancedBus,
         Mock<IExchangeDeclareStrategy> ExchangeDeclareStrategy,
-        Mock<IRabbitMqRetryTopologyCreator> RetryTopologyCreator)
+        Mock<IRabbitMqRetryTopologyCreator> RetryTopologyCreator,
+        Mock<IRabbitMqDeadLetterTopologyCreator> DeadLetterTopologyCreator)
     {
         public void VerifyTopology()
         {
             AdvancedBus.VerifyAll();
             ExchangeDeclareStrategy.VerifyAll();
             RetryTopologyCreator.VerifyAll();
+            DeadLetterTopologyCreator.VerifyAll();
         }
     }
 

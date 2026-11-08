@@ -59,6 +59,7 @@ public static class RabbitMqMessagingBuilderExtensions
 
         builder.Services.TryAddSingleton<RabbitMqDeadLetterRouteResolver>();
         builder.Services.TryAddSingleton<IRabbitMqDeadLetterPublisher, RabbitMqDeadLetterPublisher>();
+        builder.Services.TryAddSingleton<IRabbitMqDeadLetterTopologyCreator, RabbitMqDeadLetterTopologyCreator>();
 
         builder.Services.TryAddSingleton<IRabbitMqRetryTopologyCreator, RabbitMqRetryTopologyCreator>();
         builder.Services.TryAddSingleton<IRabbitMqDelayedRetryPublisher, RabbitMqDelayedRetryPublisher>();
