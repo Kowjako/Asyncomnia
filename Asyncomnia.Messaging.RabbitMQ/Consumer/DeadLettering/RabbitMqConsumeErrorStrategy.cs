@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 
 internal sealed class RabbitMqConsumeErrorStrategy(
-    IRabbitMqDeadLetterPublisher deadLetterPublisher, 
+    IRabbitMqDeadLetterPublisher deadLetterPublisher,
     IRabbitMqDelayedRetryPublisher delayedRetryPublisher,
     IOptions<RabbitMqConsumerOptions> options,
     ILogger<RabbitMqConsumeErrorStrategy> logger) : IConsumeErrorStrategy
@@ -74,7 +74,7 @@ internal sealed class RabbitMqConsumeErrorStrategy(
     public ValueTask<AckStrategyAsync> HandleCancelledAsync(ConsumeContext context, CancellationToken token = default)
     {
         _logger.LogDebug(
-            "Retry or dead-letter publishing was cancelled for queue {QueueName}. Message will be requeued",
+            "RabbitMQ message processing was cancelled for queue {QueueName}. Message will be requeued",
             context.ReceivedInfo.Queue);
 
         return new ValueTask<AckStrategyAsync>(AckStrategies.NackWithRequeueAsync);

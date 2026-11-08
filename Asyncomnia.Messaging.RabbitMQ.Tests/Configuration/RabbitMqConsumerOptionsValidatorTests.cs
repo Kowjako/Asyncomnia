@@ -141,6 +141,73 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
         Assert.True(result.Succeeded);
     }
 
+    [Fact]
+    public void Validate_WhenBrokerRetriesAreDisabled_DoesNotValidateRetryDelays()
+    {
+        var options = CreateValidOptions();
+        options.BrokerRetriesEnabled = false;
+        options.BrokerRetryDelays = [];
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_WhenBrokerRetriesAreEnabledWithoutDelays_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.BrokerRetriesEnabled = true;
+        options.BrokerRetryDelays = [];
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(nameof(options.BrokerRetryDelays), result.FailureMessage);
+    }
+
+    [Fact]
+    public void Validate_WhenBrokerRetriesAreEnabledWithNullDelays_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.BrokerRetriesEnabled = true;
+        options.BrokerRetryDelays = null!;
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(nameof(options.BrokerRetryDelays), result.FailureMessage);
+    }
+
+    [Fact]
+    public void Validate_WhenBrokerRetryDelayIsShorterThanOneMillisecond_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.BrokerRetriesEnabled = true;
+        options.BrokerRetryDelays = [TimeSpan.FromTicks(1)];
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(nameof(options.BrokerRetryDelays), result.FailureMessage);
+    }
+
+    [Fact]
+    public void Validate_WhenBrokerRetryDelaysContainDuplicates_ReturnsSuccess()
+    {
+        var options = CreateValidOptions();
+        options.BrokerRetriesEnabled = true;
+        options.BrokerRetryDelays =
+        [
+            TimeSpan.FromMilliseconds(1),
+            TimeSpan.FromMilliseconds(1)
+        ];
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
     private static RabbitMqConsumerOptions CreateValidOptions()
     {
         return new RabbitMqConsumerOptions

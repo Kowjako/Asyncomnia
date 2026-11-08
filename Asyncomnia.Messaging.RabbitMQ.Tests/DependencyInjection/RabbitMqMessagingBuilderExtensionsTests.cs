@@ -2,6 +2,7 @@ using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
@@ -164,6 +165,42 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
         Assert.Equal(
             typeof(RabbitMqDeadLetterPublisher),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersRetryTopologyCreatorAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqRetryTopologyCreator));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqRetryTopologyCreator),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMqConsumer_RegistersDelayedRetryPublisherAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMqConsumer(options =>
+            options.EndpointName = "billing-service");
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqDelayedRetryPublisher));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqDelayedRetryPublisher),
             registration.ImplementationType);
     }
 

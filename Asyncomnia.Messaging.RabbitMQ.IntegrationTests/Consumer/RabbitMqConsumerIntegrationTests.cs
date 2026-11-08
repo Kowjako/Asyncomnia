@@ -290,6 +290,77 @@ public sealed class RabbitMqConsumerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task HandlerFailure_WithRepeatedBrokerRetryDelay_RetriesAndThenDeadLettersMessage()
+    {
+        const int expectedAttempts = 3;
+        var endpointName = CreateEndpointName();
+        var probe = new BrokerRetryProbe(expectedAttempts);
+        using var host = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterEventHandler<
+                    ClientCreatedEvent,
+                    BrokerRetryClientCreatedEventHandler>(),
+            options =>
+            {
+                options.BrokerRetriesEnabled = true;
+                options.BrokerRetryDelays =
+                [
+                    TimeSpan.FromMilliseconds(100),
+                    TimeSpan.FromMilliseconds(100)
+                ];
+            });
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await host.StartAsync(ct);
+
+        try
+        {
+            var advancedBus = host.Services
+                .GetRequiredService<IAdvancedBus>();
+            var retryQueueName = "asyncomnia/retry-100ms-queue";
+            var retryQueueStats = await advancedBus.GetQueueStatsAsync(
+                retryQueueName,
+                ct);
+            Assert.Equal((ulong)0, retryQueueStats.MessagesCount);
+            Assert.Equal((ulong)0, retryQueueStats.ConsumersCount);
+
+            await using var scope = host.Services.CreateAsyncScope();
+            var publisher = scope.ServiceProvider
+                .GetRequiredService<IEventPublisher>();
+            await publisher.PublishAsync(
+                new ClientCreatedEvent(Guid.NewGuid(), "Acme"),
+                token: ct);
+
+            var attempts = await probe.WaitForExpectedAttemptsAsync(ct);
+            var deadLetterQueueName =
+                $"deadletter/events/clients/subscription/{endpointName}";
+            var deadLetterStats = await WaitForQueueToBeCreatedAsync(
+                advancedBus,
+                deadLetterQueueName,
+                stats => stats.MessagesCount == 1,
+                ct);
+
+            Assert.Equal(expectedAttempts, attempts);
+            Assert.Equal(expectedAttempts, probe.Attempts);
+            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
+
+            retryQueueStats = await WaitForQueueStatsAsync(
+                advancedBus,
+                retryQueueName,
+                stats => stats.MessagesCount == 0,
+                ct);
+            Assert.Equal((ulong)0, retryQueueStats.MessagesCount);
+        }
+        finally
+        {
+            await StopHostAsync(host);
+        }
+    }
+
     private IHost CreateHost(string endpointName, Action<IServiceCollection> configureServices, Action<AsyncomniaMessagingBuilder> configureMessaging,
         Action<RabbitMqConsumerOptions>? configureConsumer = null)
     {

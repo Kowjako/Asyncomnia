@@ -13,6 +13,21 @@ public sealed class RabbitMqConsumerOptionsTests
     }
 
     [Fact]
+    public void BrokerRetries_ByDefault_AreDisabledWithDefaultDelaySchedule()
+    {
+        var options = new RabbitMqConsumerOptions();
+
+        Assert.False(options.BrokerRetriesEnabled);
+        Assert.Equal(
+            [
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromMinutes(1),
+                TimeSpan.FromMinutes(5)
+            ],
+            options.BrokerRetryDelays);
+    }
+
+    [Fact]
     public void GetConsumerSettings_WithoutOverride_ReturnsDefaults()
     {
         var options = new RabbitMqConsumerOptions

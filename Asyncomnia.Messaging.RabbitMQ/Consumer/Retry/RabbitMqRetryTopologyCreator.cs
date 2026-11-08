@@ -27,7 +27,7 @@ internal sealed class RabbitMqRetryTopologyCreator(IAdvancedBus advancedBus,
         ?? throw new ArgumentNullException(nameof(options));
 
     private readonly RabbitMqSubscriptionResolver _subscriptions = subscriptions
-        ?? throw new ArgumentException(nameof(subscriptions));
+        ?? throw new ArgumentNullException(nameof(subscriptions));
 
     public async Task DeclareAsync(CancellationToken token = default)
     {
@@ -62,7 +62,7 @@ internal sealed class RabbitMqRetryTopologyCreator(IAdvancedBus advancedBus,
             await _advancedBus.QueueBindAsync(queue.Name, exchange.Name, string.Empty, cancellationToken: token);
         }
 
-        foreach (var consumerQueue in  consumerQueues)
+        foreach (var consumerQueue in consumerQueues)
         {
             await _advancedBus.QueueBindAsync(consumerQueue, returnExchange.Name, consumerQueue, cancellationToken: token);
         }

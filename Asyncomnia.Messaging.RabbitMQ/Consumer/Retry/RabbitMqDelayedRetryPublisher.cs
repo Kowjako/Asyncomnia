@@ -30,13 +30,13 @@ internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IO
         }
 
         var retryCount = GetRetryCount(context.Properties);
-        var nextRetryCount = retryCount + 1;
 
         if (retryCount >= _options.BrokerRetryDelays.Count)
         {
             return false;
         }
 
+        var nextRetryCount = retryCount + 1;
         var delay = _options.BrokerRetryDelays[retryCount];
         var delayMilliseconds = checked((long)delay.TotalMilliseconds);
 
@@ -46,7 +46,7 @@ internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IO
             exchange: $"{Prefix}retry-{delayMilliseconds}ms",
             // save source queue name, so after Deadlettering
             // it will route to source queue via retry-return exchange
-            routingKey: context.ReceivedInfo.Queue, 
+            routingKey: context.ReceivedInfo.Queue,
             mandatory: true,
             publisherConfirms: true,
             properties: properties,
