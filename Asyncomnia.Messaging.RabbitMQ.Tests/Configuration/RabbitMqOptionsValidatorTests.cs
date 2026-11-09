@@ -56,4 +56,25 @@ public sealed class RabbitMqOptionsValidatorTests
 
         Assert.True(result.Succeeded);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_WhenPublisherChannelCountIsNotPositive_ReturnsFailure(
+        int publisherChannelCount)
+    {
+        var options = new RabbitMqOptions
+        {
+            ConnectionString =
+                "amqp://guest:guest@localhost:5672/",
+            PublisherChannelCount = publisherChannelCount
+        };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqOptions.PublisherChannelCount),
+            result.FailureMessage);
+    }
 }

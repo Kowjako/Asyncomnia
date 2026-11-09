@@ -7,6 +7,7 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Connection;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
@@ -71,6 +72,42 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
         Assert.Equal(
             typeof(RabbitMqChannelFactory),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersChannelPoolAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqChannelPool));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqChannelPool),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersPublisherAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqPublisher));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqPublisher),
             registration.ImplementationType);
     }
 
