@@ -5,6 +5,8 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Connection;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
@@ -18,19 +20,58 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.DependencyInjection;
 
 public sealed class RabbitMqMessagingBuilderExtensionsTests
 {
+    private const string ConnectionString =
+        "amqp://guest:guest@localhost:5672/";
+
     [Fact]
     public void UseRabbitMq_RegistersOutboundTransportAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
 
         var registration = Assert.Single(
             services,
             x => x.ServiceType == typeof(IOutboundTransport));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
         Assert.Equal("EasyNetQOutboundTransport", registration.ImplementationType?.Name);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersConnectionProviderAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqConnectionProvider));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqConnectionProvider),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersChannelFactoryAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqChannelFactory));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqChannelFactory),
+            registration.ImplementationType);
     }
 
     [Fact]
@@ -41,7 +82,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         services.AddSingleton(transport);
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
 
         var registration = Assert.Single(
             services,
@@ -54,12 +95,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=rabbitmq");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
         using var provider = services.BuildServiceProvider();
 
         var options = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
 
-        Assert.Equal("host=rabbitmq", options.ConnectionString);
+        Assert.Equal(ConnectionString, options.ConnectionString);
     }
 
     [Fact]
@@ -67,7 +108,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
         using var provider = services.BuildServiceProvider();
 
         var configuration = provider.GetRequiredService<ConnectionConfiguration>();
@@ -80,7 +121,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
         using var provider = services.BuildServiceProvider();
         var conventions = provider.GetRequiredService<IConventions>();
 
@@ -96,7 +137,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
         using var provider = services.BuildServiceProvider();
         var conventions = provider.GetRequiredService<IConventions>();
         var defaultConventions = new Conventions(provider.GetRequiredService<ITypeNameSerializer>());
@@ -231,7 +272,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
 
         builder
             .UseRabbitMq(options =>
-                options.ConnectionString = "host=localhost")
+                options.ConnectionString = ConnectionString)
             .UseRabbitMqConsumer(options =>
                 options.EndpointName = "billing-service");
 

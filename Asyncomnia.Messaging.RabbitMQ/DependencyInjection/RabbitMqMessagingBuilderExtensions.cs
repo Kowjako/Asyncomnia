@@ -4,6 +4,8 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Connection;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
@@ -22,6 +24,9 @@ public static class RabbitMqMessagingBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
+
+        builder.Services.TryAddSingleton<IRabbitMqConnectionProvider, RabbitMqConnectionProvider>();
+        builder.Services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqOptions>, RabbitMqOptionsValidator>());
         builder.Services.AddOptions<RabbitMqOptions>().Configure(configure).ValidateOnStart();

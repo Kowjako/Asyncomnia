@@ -2,27 +2,24 @@ using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
-using EasyNetQ;
-using EasyNetQ.Topology;
 using Microsoft.Extensions.Options;
 using Moq;
-using RabbitQueue = EasyNetQ.Topology.Queue;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.Retry;
 
 public sealed class RabbitMqRetryTopologyCreatorTests
 {
     [Fact]
-    public async Task DeclareAsync_WhenBrokerRetriesAreDisabled_DoesNotCallEasyNetQ()
+    public async Task DeclareAsync_WhenBrokerRetriesAreDisabled_DoesNotCreateChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
+            channelFactory,
             new RabbitMqConsumerOptions
             {
                 EndpointName = "billing-service",
@@ -31,16 +28,15 @@ public sealed class RabbitMqRetryTopologyCreatorTests
 
         await creator.DeclareAsync();
 
-        advancedBus.VerifyNoOtherCalls();
-        exchangeDeclareStrategy.VerifyNoOtherCalls();
+        channelFactory.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task DeclareAsync_DeclaresDistinctRetryTopologiesAndBindsConsumerQueueToReturnExchange()
+    public async Task DeclareAsync_DeclaresDistinctRetryTopologiesAndBindsConsumerQueuesToReturnExchange()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
         var options = new RabbitMqConsumerOptions
         {
             EndpointName = "billing-service",
@@ -53,92 +49,208 @@ public sealed class RabbitMqRetryTopologyCreatorTests
             ]
         };
         var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
+            channelFactory,
             options,
-            eventTypes: [typeof(ClientCreatedEvent)]);
-        var returnExchange = CreateExchange(
-            "asyncomnia/retry-return",
-            ExchangeType.Direct);
-        var retry30SecondsExchange = CreateExchange(
-            "asyncomnia/retry-30000ms",
-            ExchangeType.Fanout);
-        var retry1MinuteExchange = CreateExchange(
-            "asyncomnia/retry-60000ms",
-            ExchangeType.Fanout);
-        var retry30SecondsQueue = CreateQueue(
-            "asyncomnia/retry-30000ms-queue");
-        var retry1MinuteQueue = CreateQueue(
-            "asyncomnia/retry-60000ms-queue");
-        var queueConfigurations =
-            new Dictionary<string, Action<IQueueDeclareConfiguration>>();
-
+            eventTypes: [typeof(ClientCreatedEvent)],
+            commandTypes: [typeof(StartLongWorkJobCommand)]);
+        const string returnExchange = "asyncomnia/retry-return";
+        var retryTopologies = new[]
+        {
+            new RetryTopology(
+                "asyncomnia/retry-30000ms",
+                "asyncomnia/retry-30000ms-queue",
+                30_000L),
+            new RetryTopology(
+                "asyncomnia/retry-60000ms",
+                "asyncomnia/retry-60000ms-queue",
+                60_000L)
+        };
+        var consumerQueueNames = new[]
+        {
+            "events/clients/subscription/billing-service",
+            "commands/long-work-job/subscription/billing-service"
+        };
+        SetupChannel(channelFactory, channel);
         SetupExchangeDeclaration(
-            exchangeDeclareStrategy,
+            channel,
             returnExchange,
             ExchangeType.Direct);
-        SetupExchangeDeclaration(
-            exchangeDeclareStrategy,
-            retry30SecondsExchange,
-            ExchangeType.Fanout);
-        SetupExchangeDeclaration(
-            exchangeDeclareStrategy,
-            retry1MinuteExchange,
-            ExchangeType.Fanout);
-        SetupQueueDeclaration(
-            advancedBus,
-            retry30SecondsQueue,
-            queueConfigurations);
-        SetupQueueDeclaration(
-            advancedBus,
-            retry1MinuteQueue,
-            queueConfigurations);
-        SetupQueueBinding(
-            advancedBus,
-            retry30SecondsQueue.Name,
-            retry30SecondsExchange.Name,
-            string.Empty);
-        SetupQueueBinding(
-            advancedBus,
-            retry1MinuteQueue.Name,
-            retry1MinuteExchange.Name,
-            string.Empty);
-        SetupQueueBinding(
-            advancedBus,
-            "events/clients/subscription/billing-service",
-            returnExchange.Name,
-            "events/clients/subscription/billing-service");
+
+        foreach (var retryTopology in retryTopologies)
+        {
+            SetupRetryTopologyDeclaration(
+                channel,
+                retryTopology,
+                returnExchange);
+        }
+
+        foreach (var consumerQueueName in consumerQueueNames)
+        {
+            SetupQueueBinding(
+                channel,
+                consumerQueueName,
+                returnExchange,
+                consumerQueueName);
+        }
 
         await creator.DeclareAsync();
 
-        Assert.Equal(2, queueConfigurations.Count);
-        AssertQueueConfiguration(
-            queueConfigurations[retry30SecondsQueue.Name],
-            TimeSpan.FromSeconds(30),
-            returnExchange.Name);
-        AssertQueueConfiguration(
-            queueConfigurations[retry1MinuteQueue.Name],
-            TimeSpan.FromMinutes(1),
-            returnExchange.Name);
-        exchangeDeclareStrategy.Verify(
-            x => x.DeclareExchangeAsync(
-                retry30SecondsExchange.Name,
-                ExchangeType.Fanout,
+        channel.Verify(
+            x => x.ExchangeDeclareAsync(
+                returnExchange,
+                ExchangeType.Direct,
+                true,
+                false,
+                null,
+                false,
+                false,
                 CancellationToken.None),
             Times.Once);
-        advancedBus.Verify(
-            x => x.QueueDeclareAsync(
-                retry30SecondsQueue.Name,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                CancellationToken.None),
-            Times.Once);
-        exchangeDeclareStrategy.VerifyAll();
-        advancedBus.VerifyAll();
+
+        foreach (var retryTopology in retryTopologies)
+        {
+            channel.Verify(
+                x => x.ExchangeDeclareAsync(
+                    retryTopology.ExchangeName,
+                    ExchangeType.Fanout,
+                    true,
+                    false,
+                    null,
+                    false,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+            channel.Verify(
+                x => x.QueueDeclareAsync(
+                    retryTopology.QueueName,
+                    true,
+                    false,
+                    false,
+                    It.Is<IDictionary<string, object?>>(arguments =>
+                        HasRetryQueueArguments(
+                            arguments,
+                            retryTopology.DelayMilliseconds,
+                            returnExchange)),
+                    false,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+            channel.Verify(
+                x => x.QueueBindAsync(
+                    retryTopology.QueueName,
+                    retryTopology.ExchangeName,
+                    string.Empty,
+                    null,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+        }
+
+        foreach (var consumerQueueName in consumerQueueNames)
+        {
+            channel.Verify(
+                x => x.QueueBindAsync(
+                    consumerQueueName,
+                    returnExchange,
+                    consumerQueueName,
+                    null,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+        }
+
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DeclareAsync_ForwardsCancellationTokenToEveryBrokerOperation()
+    {
+        using var cancellationTokenSource =
+            new CancellationTokenSource();
+        var token = cancellationTokenSource.Token;
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var options = new RabbitMqConsumerOptions
+        {
+            EndpointName = "billing-service",
+            BrokerRetriesEnabled = true,
+            BrokerRetryDelays = [TimeSpan.FromSeconds(30)]
+        };
+        var creator = CreateCreator(
+            channelFactory,
+            options,
+            eventTypes: [typeof(ClientCreatedEvent)]);
+        const string returnExchange = "asyncomnia/retry-return";
+        var retryTopology = new RetryTopology(
+            "asyncomnia/retry-30000ms",
+            "asyncomnia/retry-30000ms-queue",
+            30_000L);
+        const string consumerQueueName =
+            "events/clients/subscription/billing-service";
+        SetupChannel(channelFactory, channel, token);
+        SetupExchangeDeclaration(
+            channel,
+            returnExchange,
+            ExchangeType.Direct,
+            token);
+        SetupRetryTopologyDeclaration(
+            channel,
+            retryTopology,
+            returnExchange,
+            token);
+        SetupQueueBinding(
+            channel,
+            consumerQueueName,
+            returnExchange,
+            consumerQueueName,
+            token);
+
+        await creator.DeclareAsync(token);
+
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DeclareAsync_WhenDeclarationFails_DisposesChannelAndPropagatesException()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var options = new RabbitMqConsumerOptions
+        {
+            EndpointName = "billing-service",
+            BrokerRetriesEnabled = true,
+            BrokerRetryDelays = [TimeSpan.FromSeconds(30)]
+        };
+        var creator = CreateCreator(channelFactory, options);
+        var declarationException =
+            new InvalidOperationException("declaration failed");
+        SetupChannel(channelFactory, channel);
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                "asyncomnia/retry-return",
+                ExchangeType.Direct,
+                true,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .ThrowsAsync(declarationException);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.DeclareAsync());
+
+        Assert.Same(declarationException, exception);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
     private static RabbitMqRetryTopologyCreator CreateCreator(
-        Mock<IAdvancedBus> advancedBus,
-        Mock<IExchangeDeclareStrategy> exchangeDeclareStrategy,
+        Mock<IRabbitMqChannelFactory> channelFactory,
         RabbitMqConsumerOptions options,
         IReadOnlyCollection<Type>? eventTypes = null,
         IReadOnlyCollection<Type>? commandTypes = null)
@@ -157,111 +269,115 @@ public sealed class RabbitMqRetryTopologyCreatorTests
             Options.Create(options));
 
         return new RabbitMqRetryTopologyCreator(
-            advancedBus.Object,
-            exchangeDeclareStrategy.Object,
+            channelFactory.Object,
             Options.Create(options),
             subscriptions);
     }
 
-    private static void SetupExchangeDeclaration(
-        Mock<IExchangeDeclareStrategy> exchangeDeclareStrategy,
-        Exchange exchange,
-        string exchangeType)
+    private static void SetupChannel(
+        Mock<IRabbitMqChannelFactory> channelFactory,
+        Mock<IChannel> channel,
+        CancellationToken token = default)
     {
-        exchangeDeclareStrategy
-            .Setup(x => x.DeclareExchangeAsync(
-                exchange.Name,
-                exchangeType,
-                CancellationToken.None))
-            .ReturnsAsync(exchange);
+        channelFactory
+            .Setup(x => x.CreateAsync(null, token))
+            .ReturnsAsync(channel.Object);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
     }
 
-    private static void SetupQueueDeclaration(
-        Mock<IAdvancedBus> advancedBus,
-        RabbitQueue queue,
-        IDictionary<string, Action<IQueueDeclareConfiguration>> queueConfigurations)
+    private static void SetupExchangeDeclaration(
+        Mock<IChannel> channel,
+        string exchangeName,
+        string exchangeType,
+        CancellationToken token = default)
     {
-        advancedBus
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                exchangeName,
+                exchangeType,
+                true,
+                false,
+                null,
+                false,
+                false,
+                token))
+            .Returns(Task.CompletedTask);
+    }
+
+    private static void SetupRetryTopologyDeclaration(
+        Mock<IChannel> channel,
+        RetryTopology topology,
+        string returnExchange,
+        CancellationToken token = default)
+    {
+        SetupExchangeDeclaration(
+            channel,
+            topology.ExchangeName,
+            ExchangeType.Fanout,
+            token);
+        channel
             .Setup(x => x.QueueDeclareAsync(
-                queue.Name,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                CancellationToken.None))
-            .Callback<string, Action<IQueueDeclareConfiguration>, CancellationToken>(
-                (_, configure, _) => queueConfigurations.Add(queue.Name, configure))
-            .ReturnsAsync(queue);
+                topology.QueueName,
+                true,
+                false,
+                false,
+                It.Is<IDictionary<string, object?>>(arguments =>
+                    HasRetryQueueArguments(
+                        arguments,
+                        topology.DelayMilliseconds,
+                        returnExchange)),
+                false,
+                false,
+                token))
+            .ReturnsAsync(
+                new QueueDeclareOk(topology.QueueName, 0, 0));
+        SetupQueueBinding(
+            channel,
+            topology.QueueName,
+            topology.ExchangeName,
+            string.Empty,
+            token);
     }
 
     private static void SetupQueueBinding(
-        Mock<IAdvancedBus> advancedBus,
+        Mock<IChannel> channel,
         string queueName,
         string exchangeName,
-        string routingKey)
+        string routingKey,
+        CancellationToken token = default)
     {
-        advancedBus
+        channel
             .Setup(x => x.QueueBindAsync(
                 queueName,
                 exchangeName,
                 routingKey,
                 null,
-                CancellationToken.None))
+                false,
+                token))
             .Returns(Task.CompletedTask);
     }
 
-    private static void AssertQueueConfiguration(
-        Action<IQueueDeclareConfiguration> configure,
-        TimeSpan delay,
-        string returnExchangeName)
+    private static bool HasRetryQueueArguments(
+        IDictionary<string, object?> arguments,
+        long delayMilliseconds,
+        string returnExchange)
     {
-        var queueConfiguration =
-            new Mock<IQueueDeclareConfiguration>(MockBehavior.Loose);
-
-        configure(queueConfiguration.Object);
-
-        queueConfiguration.Verify(
-            x => x.AsDurable(true),
-            Times.Once);
-        queueConfiguration.Verify(
-            x => x.AsAutoDelete(false),
-            Times.Once);
-        queueConfiguration.Verify(
-            x => x.AsExclusive(false),
-            Times.Once);
-        queueConfiguration.Verify(
-            x => x.WithArgument(
+        return arguments.Count == 2
+            && arguments.TryGetValue(
                 "x-message-ttl",
-                It.Is<object>(value =>
-                    Convert.ToInt64(value) == (long)delay.TotalMilliseconds)),
-            Times.Once);
-        queueConfiguration.Verify(
-            x => x.WithArgument(
+                out var messageTimeToLive)
+            && Convert.ToInt64(messageTimeToLive) == delayMilliseconds
+            && arguments.TryGetValue(
                 "x-dead-letter-exchange",
-                It.Is<object>(value =>
-                    Equals(value, returnExchangeName))),
-            Times.Once);
-        queueConfiguration.Verify(
-            x => x.WithArgument(
-                "x-dead-letter-routing-key",
-                It.IsAny<object>()),
-            Times.Never);
+                out var deadLetterExchange)
+            && Equals(deadLetterExchange, returnExchange)
+            && !arguments.ContainsKey("x-dead-letter-routing-key");
     }
 
-    private static Exchange CreateExchange(string name, string exchangeType)
-    {
-        return new Exchange(
-            name,
-            exchangeType,
-            true,
-            false,
-            new Dictionary<string, object>());
-    }
-
-    private static RabbitQueue CreateQueue(string name)
-    {
-        return new RabbitQueue(
-            name,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
-    }
+    private sealed record RetryTopology(
+        string ExchangeName,
+        string QueueName,
+        long DelayMilliseconds);
 }

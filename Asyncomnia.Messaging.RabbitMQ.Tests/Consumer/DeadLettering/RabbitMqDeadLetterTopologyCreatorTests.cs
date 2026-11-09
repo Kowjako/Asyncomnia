@@ -2,10 +2,10 @@ using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
-using EasyNetQ;
-using EasyNetQ.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Microsoft.Extensions.Options;
 using Moq;
+using RabbitMQ.Client;
 using RabbitQueue = EasyNetQ.Topology.Queue;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.DeadLettering;
@@ -13,14 +13,12 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.DeadLettering;
 public sealed class RabbitMqDeadLetterTopologyCreatorTests
 {
     [Fact]
-    public async Task DeclareAsync_WhenDeadLetteringIsDisabled_DoesNotCallEasyNetQ()
+    public async Task DeclareAsync_WhenDeadLetteringIsDisabled_DoesNotCreateChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
+            channelFactory,
             deadLetteringEnabled: false);
 
         await creator.DeclareAsync(
@@ -29,35 +27,28 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                 "events/clients/subscription/billing-service")
         ]);
 
-        advancedBus.VerifyNoOtherCalls();
-        exchangeDeclareStrategy.VerifyNoOtherCalls();
+        channelFactory.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task DeclareAsync_WithoutSubscriptions_DoesNotCallEasyNetQ()
+    public async Task DeclareAsync_WithoutSubscriptions_DoesNotCreateChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
-        var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var creator = CreateCreator(channelFactory);
 
         await creator.DeclareAsync([]);
 
-        advancedBus.VerifyNoOtherCalls();
-        exchangeDeclareStrategy.VerifyNoOtherCalls();
+        channelFactory.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task DeclareAsync_WithSubscriptions_DeclaresDirectExchangeAndDurableQueueForEachSubscription()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
-        var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var creator = CreateCreator(channelFactory);
         var sourceQueueNames = new[]
         {
             "commands/long-work-job/subscription/worker-service",
@@ -66,90 +57,78 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
         var deadLetterQueueNames = sourceQueueNames
             .Select(queueName => $"deadletter/{queueName}")
             .ToArray();
-        var exchange = CreateExchange("asyncomnia/deadletter");
-        var queueConfigurations =
-            new Dictionary<string, Action<IQueueDeclareConfiguration>>(
-                StringComparer.Ordinal);
-        exchangeDeclareStrategy
-            .Setup(x => x.DeclareExchangeAsync(
-                exchange.Name,
-                ExchangeType.Direct,
-                CancellationToken.None))
-            .ReturnsAsync(exchange);
+        const string exchangeName = "asyncomnia/deadletter";
+        SetupChannel(channelFactory, channel);
+        SetupExchangeDeclaration(channel, exchangeName);
 
         foreach (var queueName in deadLetterQueueNames)
         {
-            advancedBus
-                .Setup(x => x.QueueDeclareAsync(
-                    queueName,
-                    It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                    CancellationToken.None))
-                .Callback<
-                    string,
-                    Action<IQueueDeclareConfiguration>,
-                    CancellationToken>((name, configure, _) =>
-                        queueConfigurations[name] = configure)
-                .ReturnsAsync(CreateQueue(queueName));
-            advancedBus
-                .Setup(x => x.QueueBindAsync(
-                    queueName,
-                    exchange.Name,
-                    queueName,
-                    null,
-                    CancellationToken.None))
-                .Returns(Task.CompletedTask);
+            SetupQueueDeclaration(
+                channel,
+                queueName,
+                exchangeName);
         }
 
         await creator.DeclareAsync(
             sourceQueueNames.Select(CreateSubscription).ToArray());
 
-        Assert.Equal(2, queueConfigurations.Count);
-        Assert.All(
-            queueConfigurations.Values,
-            AssertDurableQueueConfiguration);
-        exchangeDeclareStrategy.Verify(
-            x => x.DeclareExchangeAsync(
-                exchange.Name,
+        channel.Verify(
+            x => x.ExchangeDeclareAsync(
+                exchangeName,
                 ExchangeType.Direct,
+                true,
+                false,
+                null,
+                false,
+                false,
                 CancellationToken.None),
             Times.Once);
-        exchangeDeclareStrategy.VerifyAll();
-        advancedBus.VerifyAll();
+
+        foreach (var queueName in deadLetterQueueNames)
+        {
+            channel.Verify(
+                x => x.QueueDeclareAsync(
+                    queueName,
+                    true,
+                    false,
+                    false,
+                    null,
+                    false,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+            channel.Verify(
+                x => x.QueueBindAsync(
+                    queueName,
+                    exchangeName,
+                    queueName,
+                    null,
+                    false,
+                    CancellationToken.None),
+                Times.Once);
+        }
+
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
     [Fact]
     public async Task DeclareAsync_WithDuplicateSourceQueues_DeclaresDeadLetterQueueOnce()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy =
-            new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
-        var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var creator = CreateCreator(channelFactory);
         var sourceQueueName =
             "events/clients/subscription/billing-service";
         var deadLetterQueueName = $"deadletter/{sourceQueueName}";
-        var exchange = CreateExchange("asyncomnia/deadletter");
-        exchangeDeclareStrategy
-            .Setup(x => x.DeclareExchangeAsync(
-                exchange.Name,
-                ExchangeType.Direct,
-                CancellationToken.None))
-            .ReturnsAsync(exchange);
-        advancedBus
-            .Setup(x => x.QueueDeclareAsync(
-                deadLetterQueueName,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                CancellationToken.None))
-            .ReturnsAsync(CreateQueue(deadLetterQueueName));
-        advancedBus
-            .Setup(x => x.QueueBindAsync(
-                deadLetterQueueName,
-                exchange.Name,
-                deadLetterQueueName,
-                null,
-                CancellationToken.None))
-            .Returns(Task.CompletedTask);
+        const string exchangeName = "asyncomnia/deadletter";
+        SetupChannel(channelFactory, channel);
+        SetupExchangeDeclaration(channel, exchangeName);
+        SetupQueueDeclaration(
+            channel,
+            deadLetterQueueName,
+            exchangeName);
 
         await creator.DeclareAsync(
         [
@@ -157,36 +136,70 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
             CreateSubscription(sourceQueueName)
         ]);
 
-        exchangeDeclareStrategy.Verify(
-            x => x.DeclareExchangeAsync(
-                exchange.Name,
-                ExchangeType.Direct,
-                CancellationToken.None),
-            Times.Once);
-        advancedBus.Verify(
+        channel.Verify(
             x => x.QueueDeclareAsync(
                 deadLetterQueueName,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
+                true,
+                false,
+                false,
+                null,
+                false,
+                false,
                 CancellationToken.None),
             Times.Once);
-        advancedBus.Verify(
+        channel.Verify(
             x => x.QueueBindAsync(
                 deadLetterQueueName,
-                exchange.Name,
+                exchangeName,
                 deadLetterQueueName,
                 null,
+                false,
                 CancellationToken.None),
             Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DeclareAsync_WhenDeclarationFails_DisposesChannelAndPropagatesException()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var creator = CreateCreator(channelFactory);
+        var declarationException =
+            new InvalidOperationException("declaration failed");
+        SetupChannel(channelFactory, channel);
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                "asyncomnia/deadletter",
+                ExchangeType.Direct,
+                true,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .ThrowsAsync(declarationException);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.DeclareAsync(
+            [
+                CreateSubscription(
+                    "events/clients/subscription/billing-service")
+            ]));
+
+        Assert.Same(declarationException, exception);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
     private static RabbitMqDeadLetterTopologyCreator CreateCreator(
-        Mock<IAdvancedBus> advancedBus,
-        Mock<IExchangeDeclareStrategy> exchangeDeclareStrategy,
+        Mock<IRabbitMqChannelFactory> channelFactory,
         bool deadLetteringEnabled = true)
     {
         return new RabbitMqDeadLetterTopologyCreator(
-            advancedBus.Object,
-            exchangeDeclareStrategy.Object,
+            channelFactory.Object,
             new RabbitMqDeadLetterRouteResolver(),
             Options.Create(
                 new RabbitMqConsumerOptions
@@ -194,6 +207,64 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                     EndpointName = "test-service",
                     DeadLetteringEnabled = deadLetteringEnabled
                 }));
+    }
+
+    private static void SetupChannel(
+        Mock<IRabbitMqChannelFactory> channelFactory,
+        Mock<IChannel> channel)
+    {
+        channelFactory
+            .Setup(x => x.CreateAsync(
+                null,
+                CancellationToken.None))
+            .ReturnsAsync(channel.Object);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+    }
+
+    private static void SetupExchangeDeclaration(
+        Mock<IChannel> channel,
+        string exchangeName)
+    {
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                exchangeName,
+                ExchangeType.Direct,
+                true,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+    }
+
+    private static void SetupQueueDeclaration(
+        Mock<IChannel> channel,
+        string queueName,
+        string exchangeName)
+    {
+        channel
+            .Setup(x => x.QueueDeclareAsync(
+                queueName,
+                true,
+                false,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .ReturnsAsync(new QueueDeclareOk(queueName, 0, 0));
+        channel
+            .Setup(x => x.QueueBindAsync(
+                queueName,
+                exchangeName,
+                queueName,
+                null,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
     }
 
     private static RabbitMqDeclaredSubscription CreateSubscription(
@@ -209,35 +280,6 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
         return new RabbitMqDeclaredSubscription(
             subscription,
             CreateQueue(queueName));
-    }
-
-    private static void AssertDurableQueueConfiguration(Action<IQueueDeclareConfiguration> configure)
-    {
-        var configuration =
-            new Mock<IQueueDeclareConfiguration>(MockBehavior.Strict);
-        configuration
-            .Setup(x => x.AsDurable(true))
-            .Returns(configuration.Object);
-        configuration
-            .Setup(x => x.AsAutoDelete(false))
-            .Returns(configuration.Object);
-        configuration
-            .Setup(x => x.AsExclusive(false))
-            .Returns(configuration.Object);
-
-        configure(configuration.Object);
-
-        configuration.VerifyAll();
-    }
-
-    private static Exchange CreateExchange(string name)
-    {
-        return new Exchange(
-            name,
-            ExchangeType.Direct,
-            true,
-            false,
-            new Dictionary<string, object>());
     }
 
     private static RabbitQueue CreateQueue(string name)

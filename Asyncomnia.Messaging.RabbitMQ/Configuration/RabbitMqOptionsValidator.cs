@@ -6,9 +6,15 @@ internal sealed class RabbitMqOptionsValidator : IValidateOptions<RabbitMqOption
 {
     public ValidateOptionsResult Validate(string? name, RabbitMqOptions options)
     {
-        if (string.IsNullOrWhiteSpace(options.ConnectionString))
+        if (!Uri.TryCreate(options.ConnectionString, UriKind.Absolute, out var connectionUri))
         {
-            return ValidateOptionsResult.Fail("RabbitMqOptions:ConnectionString cannot be empty");
+            return ValidateOptionsResult.Fail("RabbitMqOptions:ConnectionString must be a valid absolute URI");
+        }
+
+        if (!connectionUri.Scheme.Equals("amqp", StringComparison.OrdinalIgnoreCase) &&
+            !connectionUri.Scheme.Equals("amqps", StringComparison.OrdinalIgnoreCase))
+        {
+            return ValidateOptionsResult.Fail("RabbitMqOptions:ConnectionString must use the amqp or amqps scheme");
         }
 
         return ValidateOptionsResult.Success;
