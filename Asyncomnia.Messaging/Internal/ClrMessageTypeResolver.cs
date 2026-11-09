@@ -1,4 +1,4 @@
-﻿namespace Asyncomnia.Messaging.Reliability.Internal;
+﻿namespace Asyncomnia.Messaging.Internal;
 
 internal static class ClrMessageTypeResolver
 {
@@ -6,10 +6,10 @@ internal static class ClrMessageTypeResolver
     {
         ArgumentNullException.ThrowIfNull(messageType);
 
-        var typeName = messageType.FullName 
+        var typeName = messageType.FullName
             ?? throw new InvalidOperationException($"Message type '{messageType}' does not have a full name");
 
-        var assemblyName = messageType.Assembly.GetName().Name 
+        var assemblyName = messageType.Assembly.GetName().Name
             ?? throw new InvalidOperationException($"Message type '{messageType}' does not have an assembly name");
 
         return $"{typeName}, {assemblyName}";

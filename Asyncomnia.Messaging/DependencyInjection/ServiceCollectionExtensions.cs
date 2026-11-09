@@ -2,6 +2,7 @@
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.Inbound;
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Retry;
 using Asyncomnia.Messaging.Transport;
@@ -31,6 +32,8 @@ public static class ServiceCollectionExtensions
 
         services.AddOptions<InMemoryRetryOptions>();
         services.TryAddSingleton<IInMemoryRetryExecutor, InMemoryRetryExecutor>();
+
+        services.TryAddSingleton<MessageJsonSerializer>();
 
         return new AsyncomniaMessagingBuilder(services);
     }

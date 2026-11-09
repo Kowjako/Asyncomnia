@@ -1,4 +1,5 @@
-﻿using Asyncomnia.Messaging.Reliability.Internal;
+﻿using Asyncomnia.Messaging.Internal;
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Transport;
@@ -11,14 +12,14 @@ internal sealed class OutboxBatchProcessor
 {
     private readonly IOutboxStore _outboxStore;
     private readonly IOutboundTransport _transport;
-    private readonly OutboxJsonSerializer _serializer;
+    private readonly MessageJsonSerializer _serializer;
     private readonly OutboxOptions _options;
     private readonly ILogger<OutboxBatchProcessor> _logger;
 
     public OutboxBatchProcessor(
         IOutboxStore outboxStore,
         IOutboundTransport transport,
-        OutboxJsonSerializer serializer,
+        MessageJsonSerializer serializer,
         IOptions<OutboxOptions> options,
         ILogger<OutboxBatchProcessor> logger)
     {

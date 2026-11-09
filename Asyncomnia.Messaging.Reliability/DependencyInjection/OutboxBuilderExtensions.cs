@@ -16,8 +16,6 @@ public static class OutboxBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.TryAddSingleton<OutboxJsonSerializer>();
-
         builder.Services.RemoveAll<IOutboundMessagePipeline>();
         builder.Services.AddScoped<IOutboundMessagePipeline, OutboxMessagePipeline>();
 
