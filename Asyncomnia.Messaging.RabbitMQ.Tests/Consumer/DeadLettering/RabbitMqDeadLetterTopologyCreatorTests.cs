@@ -1,12 +1,10 @@
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
-using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Microsoft.Extensions.Options;
 using Moq;
 using RabbitMQ.Client;
-using RabbitQueue = EasyNetQ.Topology.Queue;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.DeadLettering;
 
@@ -267,28 +265,14 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
             .Returns(Task.CompletedTask);
     }
 
-    private static RabbitMqDeclaredSubscription CreateSubscription(
+    private static RabbitMqSubscription CreateSubscription(
         string queueName)
     {
-        var subscription = new RabbitMqSubscription
+        return new RabbitMqSubscription
         {
             ExchangeName = queueName.Split("/subscription/")[0],
             QueueName = queueName,
             ConsumerSettings = new RabbitMqConsumerSettings(1, 1, 1)
         };
-
-        return new RabbitMqDeclaredSubscription(
-            subscription,
-            CreateQueue(queueName));
-    }
-
-    private static RabbitQueue CreateQueue(string name)
-    {
-        return new RabbitQueue(
-            name,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
     }
 }

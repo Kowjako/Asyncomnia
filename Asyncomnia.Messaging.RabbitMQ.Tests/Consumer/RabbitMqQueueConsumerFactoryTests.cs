@@ -1,6 +1,5 @@
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
-using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using EasyNetQ;
 using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,7 +11,7 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 public sealed class RabbitMqQueueConsumerFactoryTests
 {
     [Fact]
-    public async Task StartAsync_AppliesSettingsAndConfiguresDeclaredQueue()
+    public async Task StartAsync_AppliesSettingsAndConfiguresSubscriptionQueue()
     {
         var configuration = new CapturingConsumeConfiguration();
         var consumer = new Mock<IAsyncDisposable>(MockBehavior.Strict);
@@ -22,7 +21,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
             .Callback<Action<IConsumeConfiguration>>(configure => configure(configuration))
             .ReturnsAsync(consumer.Object);
         var factory = CreateFactory(advancedBus);
-        var subscription = CreateDeclaredSubscription(
+        var subscription = CreateSubscription(
             new RabbitMqConsumerSettings(2, 3, 4));
 
         var result = await factory.StartAsync(subscription);
@@ -31,7 +30,9 @@ public sealed class RabbitMqQueueConsumerFactoryTests
         Assert.Equal((ushort)3, configuration.PrefetchCount);
         Assert.Equal((ushort)4, configuration.DispatcherConcurrency);
         Assert.True(configuration.Queue.HasValue);
-        Assert.Equal(subscription.Queue, configuration.Queue.Value);
+        Assert.Equal(
+            subscription.QueueName,
+            configuration.Queue.Value.Name);
         Assert.NotNull(configuration.RegisterHandlers);
         Assert.NotNull(configuration.ConfigureQueue);
 
@@ -53,7 +54,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
     {
         var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
         var factory = CreateFactory(advancedBus);
-        var subscription = CreateDeclaredSubscription(
+        var subscription = CreateSubscription(
             new RabbitMqConsumerSettings(1, 1, 1));
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
@@ -85,24 +86,16 @@ public sealed class RabbitMqQueueConsumerFactoryTests
         return new RabbitMqQueueConsumerFactory(advancedBus.Object, registrar);
     }
 
-    private static RabbitMqDeclaredSubscription CreateDeclaredSubscription(RabbitMqConsumerSettings settings)
+    private static RabbitMqSubscription CreateSubscription(
+        RabbitMqConsumerSettings settings)
     {
-        var subscription = new RabbitMqSubscription
+        return new RabbitMqSubscription
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
             Bindings = [],
             ConsumerSettings = settings
         };
-
-        var queue = new RabbitQueue(
-            subscription.QueueName,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
-
-        return new RabbitMqDeclaredSubscription(subscription, queue);
     }
 
     private sealed class CapturingConsumeConfiguration : IConsumeConfiguration

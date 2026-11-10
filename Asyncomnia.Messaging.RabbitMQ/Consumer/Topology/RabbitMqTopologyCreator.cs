@@ -1,44 +1,64 @@
-﻿using EasyNetQ;
+﻿using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 
-internal sealed class RabbitMqTopologyCreator(IAdvancedBus advancedBus, 
-    IExchangeDeclareStrategy exchangeDeclareStrategy, RabbitMqSubscriptionResolver subscriptionResolver)
+internal sealed class RabbitMqTopologyCreator(IRabbitMqChannelFactory channelFactory,
+    RabbitMqSubscriptionResolver subscriptionResolver)
 {
-    private readonly IAdvancedBus _advancedBus = advancedBus
-        ?? throw new ArgumentNullException(nameof(advancedBus));
-
-    private readonly IExchangeDeclareStrategy _exchangeDeclareStrategy = exchangeDeclareStrategy
-        ?? throw new ArgumentNullException(nameof(exchangeDeclareStrategy));
+    private readonly IRabbitMqChannelFactory _channelFactory = channelFactory
+        ?? throw new ArgumentNullException(nameof(channelFactory));
 
     private readonly RabbitMqSubscriptionResolver _subscriptionResolver = subscriptionResolver
         ?? throw new ArgumentNullException(nameof(subscriptionResolver));
 
-    public async Task<IReadOnlyCollection<RabbitMqDeclaredSubscription>> DeclareAsync(CancellationToken token = default)
+    public async Task<IReadOnlyCollection<RabbitMqSubscription>> DeclareAsync(CancellationToken token = default)
     {
         var subscriptions = _subscriptionResolver.Resolve();
-        var declaredSubscriptions = new List<RabbitMqDeclaredSubscription>();
+        if (subscriptions.Count == 0)
+        {
+            return subscriptions;
+        }
+
+        token.ThrowIfCancellationRequested();
+
+        await using var channel = await _channelFactory.CreateAsync(token: token);
 
         foreach (var sub in subscriptions)
         {
             token.ThrowIfCancellationRequested();
 
-            var exchange = await _exchangeDeclareStrategy.DeclareExchangeAsync(sub.ExchangeName, ExchangeType.Topic, token);
-            var queue = await _advancedBus.QueueDeclareAsync(sub.QueueName, cfg =>
-            {
-                cfg.AsDurable(true);
-                cfg.AsAutoDelete(false);
-                cfg.AsExclusive(false);
-            }, token);
+            await channel.ExchangeDeclareAsync(
+                exchange: sub.ExchangeName,
+                ExchangeType.Topic,
+                durable: true,
+                autoDelete: false,
+                arguments: null,
+                passive: false,
+                noWait: false,
+                cancellationToken: token);
+
+            await channel.QueueDeclareAsync(
+                queue: sub.QueueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: null,
+                noWait: false,
+                cancellationToken: token);
 
             foreach (var binding in sub.Bindings)
             {
-                await _advancedBus.QueueBindAsync(queue.Name, exchange.Name, binding.RoutingKey, cancellationToken: token);
+                await channel.QueueBindAsync(
+                    queue: sub.QueueName,
+                    exchange: sub.ExchangeName,
+                    routingKey: binding.RoutingKey,
+                    arguments: null,
+                    noWait: false,
+                    cancellationToken: token);
             }
-
-            declaredSubscriptions.Add(new RabbitMqDeclaredSubscription(sub, queue));
         }
 
-        return declaredSubscriptions;
+        return subscriptions;
     }
 }

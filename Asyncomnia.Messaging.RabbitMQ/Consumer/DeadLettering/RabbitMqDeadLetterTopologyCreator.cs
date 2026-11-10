@@ -1,5 +1,4 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
-using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
@@ -8,7 +7,7 @@ namespace Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 
 internal interface IRabbitMqDeadLetterTopologyCreator
 {
-    Task DeclareAsync(IReadOnlyCollection<RabbitMqDeclaredSubscription> subscriptions, CancellationToken token = default);
+    Task DeclareAsync(IReadOnlyCollection<RabbitMqSubscription> subscriptions, CancellationToken token = default);
 }
 
 internal sealed class RabbitMqDeadLetterTopologyCreator(IRabbitMqChannelFactory channelFactory,
@@ -24,7 +23,7 @@ internal sealed class RabbitMqDeadLetterTopologyCreator(IRabbitMqChannelFactory 
     private readonly RabbitMqConsumerOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
 
-    public async Task DeclareAsync(IReadOnlyCollection<RabbitMqDeclaredSubscription> subscriptions, CancellationToken token = default)
+    public async Task DeclareAsync(IReadOnlyCollection<RabbitMqSubscription> subscriptions, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(subscriptions);
 
@@ -34,7 +33,7 @@ internal sealed class RabbitMqDeadLetterTopologyCreator(IRabbitMqChannelFactory 
         }
 
         var routes = subscriptions
-            .Select(x => _routeResolver.Resolve(x.Subscription.QueueName))
+            .Select(x => _routeResolver.Resolve(x.QueueName))
             .DistinctBy(x => x.QueueName, StringComparer.Ordinal)
             .ToArray();
 
