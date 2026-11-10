@@ -1,4 +1,5 @@
 ﻿using Asyncomnia.Messaging.Inbound;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
 using EasyNetQ;
 using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,7 +20,7 @@ internal sealed class RabbitMqMessageConsumer(IServiceScopeFactory scopeFactory)
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(handle);
 
-        var messageMetadata = RabbitMqMessageMetadataMapper.Map(message.Properties);
+        var messageMetadata = RabbitMqMessagePropertiesMapper.Map(message.Properties);
         var envelope = new MessageEnvelope<TMessage>(message.Body, messageMetadata);
 
         await using var scope = _scopeFactory.CreateAsyncScope();
