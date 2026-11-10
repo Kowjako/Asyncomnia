@@ -37,7 +37,9 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
             services,
             x => x.ServiceType == typeof(IOutboundTransport));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Equal("EasyNetQOutboundTransport", registration.ImplementationType?.Name);
+        Assert.Equal(
+            typeof(RabbitMqOutboundTransport),
+            registration.ImplementationType);
     }
 
     [Fact]

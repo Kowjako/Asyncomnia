@@ -6,6 +6,7 @@ using EasyNetQ;
 using EasyNetQ.Producer;
 using EasyNetQ.Topology;
 using Microsoft.Extensions.DependencyInjection;
+using RabbitMQ.Client.Exceptions;
 
 namespace Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Transport;
 
@@ -82,7 +83,7 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenCommandCannotBeRouted_ThrowsPublishReturnedException()
+    public async Task SendAsync_WhenCommandCannotBeRouted_ThrowsPublishException()
     {
         await using var provider = CreateProvider();
         await using var scope = provider.CreateAsyncScope();
@@ -90,7 +91,10 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
         var command = new StartUnhandledJobCommand(Guid.NewGuid());
         using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        await Assert.ThrowsAsync<PublishReturnedException>(() => sender.SendAsync(command, token: cancellationTokenSource.Token));
+        await Assert.ThrowsAsync<PublishException>(
+            () => sender.SendAsync(
+                command,
+                token: cancellationTokenSource.Token));
     }
 
     private ServiceProvider CreateProvider()

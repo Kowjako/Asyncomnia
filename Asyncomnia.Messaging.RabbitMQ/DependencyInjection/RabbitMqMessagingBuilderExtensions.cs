@@ -51,7 +51,7 @@ public static class RabbitMqMessagingBuilderExtensions
 
         builder.Services.RegisterAsyncomniaRoutingConventions();
 
-        builder.Services.TryAddSingleton<IOutboundTransport, EasyNetQOutboundTransport>();
+        builder.Services.TryAddSingleton<IOutboundTransport, RabbitMqOutboundTransport>();
 
         return builder;
     }
