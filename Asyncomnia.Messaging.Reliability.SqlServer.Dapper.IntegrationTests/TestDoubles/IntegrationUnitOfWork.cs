@@ -10,7 +10,7 @@ internal sealed class IntegrationUnitOfWork : IIntegrationUnitOfWork, IAsyncDisp
     private readonly SqlConnection _connection;
     private DbTransaction? _transaction;
 
-    public DbTransaction? CurrentTransaction => _transaction;
+    public IDbTransaction? CurrentTransaction => _transaction;
 
     public IntegrationUnitOfWork(string connectionString)
     {

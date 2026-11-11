@@ -64,6 +64,30 @@ public sealed class DapperOutboxIntegrationTests : IAsyncLifetime
         Assert.Equal(0, await CountOutboxMessagesAsync());
     }
 
+    [Fact]
+    public async Task PublishAsync_WithoutActiveTransaction_WritesStandaloneOutboxRecord()
+    {
+        await using var scope = _host!.Services.CreateAsyncScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IIntegrationUnitOfWork>();
+        var publisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
+        var orderId = Guid.NewGuid();
+
+        Assert.Null(unitOfWork.CurrentTransaction);
+
+        await publisher.PublishAsync(new OrderCreatedEvent(orderId));
+
+        Assert.Null(unitOfWork.CurrentTransaction);
+        Assert.Equal(0, await CountOrdersAsync());
+        Assert.Equal(1, await CountOutboxMessagesAsync());
+
+        var store = scope.ServiceProvider.GetRequiredService<IOutboxStore>();
+        var claimedMessages = await store.ClaimAsync(10, TimeSpan.FromMinutes(1));
+        var claimedMessage = Assert.Single(claimedMessages);
+
+        Assert.Contains(nameof(OrderCreatedEvent), claimedMessage.Message.ContractType);
+        Assert.Contains(orderId.ToString(), claimedMessage.Message.MessageJson);
+    }
+
     public async Task InitializeAsync()
     {
         var builder = Host.CreateApplicationBuilder();
