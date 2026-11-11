@@ -83,8 +83,8 @@ internal sealed class RabbitMqMessageConsumer(
 
         await using var scope = _scopeFactory.CreateAsyncScope();
 
-        var processor = scope.ServiceProvider.GetRequiredService<IInboundMessageProcessor>();
-        await processor.ProcessAsync(context, token);
+        var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
+        await descriptor.DispatchAsync(pipeline, context, token);
     }
 
     private static ValueTask ReturnResponseToBrokerAsync(IChannel channel, ulong deliveryTag, AckResponse response, CancellationToken token)
