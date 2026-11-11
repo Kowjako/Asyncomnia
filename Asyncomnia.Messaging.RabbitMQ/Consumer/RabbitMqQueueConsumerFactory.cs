@@ -1,36 +1,65 @@
-﻿using EasyNetQ;
+﻿using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer;
 
 internal interface IRabbitMqQueueConsumerFactory
 {
-    Task<IAsyncDisposable> StartAsync(RabbitMqSubscription subscription, CancellationToken ct = default);
+    Task<IAsyncDisposable> StartAsync(RabbitMqSubscription subscription, CancellationToken token = default);
 }
 
-internal sealed class RabbitMqQueueConsumerFactory(IAdvancedBus advancedBus, RabbitMqHandlerRegistrar handlerRegistrar) : IRabbitMqQueueConsumerFactory
+internal sealed class RabbitMqQueueConsumerFactory(IRabbitMqChannelFactory channelFactory,
+    RabbitMqMessageConsumer messageConsumer) : IRabbitMqQueueConsumerFactory
 {
-    private readonly IAdvancedBus _advancedBus = advancedBus
-        ?? throw new ArgumentNullException(nameof(advancedBus));
+    private readonly IRabbitMqChannelFactory _channelFactory = channelFactory
+        ?? throw new ArgumentNullException(nameof(channelFactory));
 
-    private readonly RabbitMqHandlerRegistrar _handlerRegistrar = handlerRegistrar
-        ?? throw new ArgumentNullException(nameof(handlerRegistrar));
+    private readonly RabbitMqMessageConsumer _messageConsumer = messageConsumer
+        ?? throw new ArgumentNullException(nameof(messageConsumer));
 
-    public Task<IAsyncDisposable> StartAsync(RabbitMqSubscription subscription, CancellationToken ct = default)
+    public async Task<IAsyncDisposable> StartAsync(RabbitMqSubscription subscription, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(subscription);
-        ct.ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
 
-        var settings = subscription.ConsumerSettings;
+        var channel = await _channelFactory.CreateAsync(CreateConsumerChannelOptions(subscription), token);
 
-        return _advancedBus.ConsumeAsync(configuration =>
+        try
         {
-            configuration.WithPrefetchCount(settings.PrefetchCount)
-                         .WithConsumerDispatcherConcurrency(settings.DispatcherConcurrency);
+            await channel.BasicQosAsync(
+                prefetchSize: 0, // 0 means ignore prefetch total size
+                prefetchCount: subscription.ConsumerSettings.PrefetchCount,
+                global: false, // false - means this limit only for this consumer
+                cancellationToken: token);
 
-            configuration.ForQueue(new EasyNetQ.Topology.Queue(subscription.QueueName), registration =>
-            {
-                _handlerRegistrar.Register(registration, subscription.Bindings);
-            }, _ => { });
-        });
+            var consumer = new AsyncEventingBasicConsumer(channel);
+
+            consumer.ReceivedAsync += (_, delivery) =>
+                _messageConsumer.ConsumeAsync(channel, subscription, delivery, delivery.CancellationToken);
+            
+            await channel.BasicConsumeAsync(
+                queue: subscription.QueueName,
+                autoAck: false,
+                consumer,
+                cancellationToken: token);
+
+            return channel;
+        }
+        catch
+        {
+            await channel.DisposeAsync();
+            throw;
+        }
+    }
+
+    private CreateChannelOptions CreateConsumerChannelOptions(RabbitMqSubscription subscription)
+    {
+        // consumer dont need publisher confirms, since consumer only listening
+        return new CreateChannelOptions(
+            publisherConfirmationsEnabled: false,
+            publisherConfirmationTrackingEnabled: false,
+            outstandingPublisherConfirmationsRateLimiter: null,
+            consumerDispatchConcurrency: subscription.ConsumerSettings.DispatcherConcurrency);
     }
 }

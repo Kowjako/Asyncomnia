@@ -1,14 +1,13 @@
 ﻿using System.Text;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using EasyNetQ;
-using EasyNetQ.Consumer;
 using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 
 internal interface IRabbitMqDelayedRetryPublisher
 {
-    Task<bool> TryPublishAsync(ConsumeContext context, CancellationToken token = default);
+    Task<bool> TryPublishAsync(RabbitMqConsumeContext context, CancellationToken token = default);
 }
 
 internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IOptions<RabbitMqConsumerOptions> options) : IRabbitMqDelayedRetryPublisher
@@ -22,7 +21,7 @@ internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IO
     private readonly RabbitMqConsumerOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
 
-    public async Task<bool> TryPublishAsync(ConsumeContext context, CancellationToken token = default)
+    public async Task<bool> TryPublishAsync(RabbitMqConsumeContext context, CancellationToken token = default)
     {
         if (!_options.BrokerRetriesEnabled)
         {

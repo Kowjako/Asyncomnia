@@ -5,7 +5,7 @@ namespace Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 
 internal interface IRabbitMqDeadLetterPublisher
 {
-    Task PublishAsync(ConsumeContext context, CancellationToken token = default);
+    Task PublishAsync(RabbitMqConsumeContext context, CancellationToken token = default);
 }
 
 internal sealed class RabbitMqDeadLetterPublisher(IAdvancedBus advancedBus, RabbitMqDeadLetterRouteResolver routeResolver) 
@@ -17,7 +17,7 @@ internal sealed class RabbitMqDeadLetterPublisher(IAdvancedBus advancedBus, Rabb
     private readonly RabbitMqDeadLetterRouteResolver _routeResolver = routeResolver
         ?? throw new ArgumentNullException(nameof(routeResolver));
 
-    public async Task PublishAsync(ConsumeContext context, CancellationToken token = default)
+    public async Task PublishAsync(RabbitMqConsumeContext context, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 

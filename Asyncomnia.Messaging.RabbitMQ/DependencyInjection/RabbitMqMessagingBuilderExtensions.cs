@@ -13,7 +13,6 @@ using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
 using EasyNetQ;
 using EasyNetQ.ConnectionString;
-using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -81,8 +80,6 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.TryAddSingleton<IRabbitMqQueueConsumerFactory, RabbitMqQueueConsumerFactory>();
 
         builder.Services.AddHostedService<RabbitMqConsumerHostedService>();
-
-        builder.Services.Replace(ServiceDescriptor.Singleton<IConsumeErrorStrategy, RabbitMqConsumeErrorStrategy>());
 
         return builder;
     }

@@ -23,6 +23,7 @@ internal sealed class RabbitMqConsumerHostedService(
         {
             foreach (var declaredSubscription in subscriptions)
             {
+                // What is the difference between ConsumerCount and DefaultConsumerCount?
                 var consumerCount = declaredSubscription.ConsumerSettings.ConsumerCount;
 
                 for (var consumerIndex = 0; consumerIndex < consumerCount; consumerIndex++)

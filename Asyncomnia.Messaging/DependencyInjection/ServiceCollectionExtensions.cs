@@ -28,7 +28,12 @@ public static class ServiceCollectionExtensions
 
         services.TryAddScoped<IOutboundMessagePipeline, TransportMessagePipeline>();
 
+        // Stores all type of registered Command/Event Handlers, based on that we will
+        // create topology (queues and appropriate binding keys)
         services.TryAddSingleton<IMessageHandlerCatalog, MessageHandlerCatalog>();
+        
+        // Maps evnet/command type to dispatch delegate, used by rabbitmq consumer
+        services.TryAddSingleton<IMessageDispatchCatalog, MessageDispatchCatalog>();
 
         services.AddOptions<InMemoryRetryOptions>();
         services.TryAddSingleton<IInMemoryRetryExecutor, InMemoryRetryExecutor>();
