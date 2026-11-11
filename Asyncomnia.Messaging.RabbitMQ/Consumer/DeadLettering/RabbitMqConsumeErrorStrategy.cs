@@ -1,6 +1,5 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
-using EasyNetQ.Consumer;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -10,7 +9,7 @@ internal sealed class RabbitMqConsumeErrorStrategy(
     IRabbitMqDeadLetterPublisher deadLetterPublisher,
     IRabbitMqDelayedRetryPublisher delayedRetryPublisher,
     IOptions<RabbitMqConsumerOptions> options,
-    ILogger<RabbitMqConsumeErrorStrategy> logger) : IConsumeErrorStrategy
+    ILogger<RabbitMqConsumeErrorStrategy> logger)
 {
     private readonly IRabbitMqDeadLetterPublisher _deadLetterPublisher = deadLetterPublisher
         ?? throw new ArgumentNullException(nameof(deadLetterPublisher));
@@ -24,59 +23,51 @@ internal sealed class RabbitMqConsumeErrorStrategy(
     private readonly ILogger<RabbitMqConsumeErrorStrategy> _logger = logger
         ?? throw new ArgumentNullException(nameof(logger));
 
-    public async ValueTask<AckStrategyAsync> HandleErrorAsync(ConsumeContext context, Exception exception, CancellationToken token = default)
+    public async ValueTask<AckResponse> HandleErrorAsync(RabbitMqConsumeContext context, Exception exception, CancellationToken token = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(exception);
 
         _logger.LogError(
             exception,
             "RabbitMQ message processing failed. Queue={QueueName}, Exchange={ExchangeName}, RoutingKey={RoutingKey}",
-            context.ReceivedInfo.Queue,
-            context.ReceivedInfo.Exchange,
-            context.ReceivedInfo.RoutingKey);
+            context.QueueName,
+            context.ExchangeName,
+            context.RoutingKey);
 
         try
         {
             if (await _delayedRetryPublisher.TryPublishAsync(context, token))
             {
-                _logger.LogWarning("Message from queue {QueueName} was scheduled for broker retry", context.ReceivedInfo.Queue);
-                return AckStrategies.AckAsync;
+                _logger.LogWarning("Message from queue {QueueName} was scheduled for broker retry", context.QueueName);
+                return AckResponse.Ack;
             }
 
             if (!_options.DeadLetteringEnabled)
             {
-                return AckStrategies.NackWithoutRequeueAsync;
+                return AckResponse.NackWithoutRequeue;
             }
 
             await _deadLetterPublisher.PublishAsync(context, token);
 
-            _logger.LogWarning("Message from queue {QueueName} was published to the dead-letter exchange", context.ReceivedInfo.Queue);
+            _logger.LogWarning("Message from queue {QueueName} was published to the dead-letter exchange", context.QueueName);
 
-            return AckStrategies.AckAsync;
+            return AckResponse.Ack;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            _logger.LogDebug("Retry or dead-letter publishing was cancelled for queue {QueueName}. Message will be requeued", context.ReceivedInfo.Queue);
+            _logger.LogDebug("Retry or dead-letter publishing was cancelled for queue {QueueName}. Message will be requeued", context.QueueName);
 
-            return AckStrategies.NackWithRequeueAsync;
+            return AckResponse.NackWithRequeue;
         }
         catch (Exception publishException)
         {
             _logger.LogError(
                 publishException,
                 "Failed to publish message from queue {QueueName} to retry or dead-letter topology. Message will be requeued",
-                context.ReceivedInfo.Queue);
+                context.QueueName);
 
-            return AckStrategies.NackWithRequeueAsync;
+            return AckResponse.NackWithRequeue;
         }
-    }
-
-    public ValueTask<AckStrategyAsync> HandleCancelledAsync(ConsumeContext context, CancellationToken token = default)
-    {
-        _logger.LogDebug(
-            "RabbitMQ message processing was cancelled for queue {QueueName}. Message will be requeued",
-            context.ReceivedInfo.Queue);
-
-        return new ValueTask<AckStrategyAsync>(AckStrategies.NackWithRequeueAsync);
     }
 }

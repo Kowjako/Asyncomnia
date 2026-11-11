@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
-using EasyNetQ;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 
@@ -9,19 +10,15 @@ internal interface IRabbitMqRetryTopologyCreator
     Task DeclareAsync(CancellationToken token = default);
 }
 
-internal sealed class RabbitMqRetryTopologyCreator(IAdvancedBus advancedBus,
-    IExchangeDeclareStrategy exchangeDeclareStrategy,
+internal sealed class RabbitMqRetryTopologyCreator(IRabbitMqChannelFactory channelFactory,
     IOptions<RabbitMqConsumerOptions> options,
     RabbitMqSubscriptionResolver subscriptions) : IRabbitMqRetryTopologyCreator
 {
     private const string ReturnExchange = "asyncomnia/retry-return";
     private const string Prefix = "asyncomnia/";
 
-    private readonly IAdvancedBus _advancedBus = advancedBus
-        ?? throw new ArgumentNullException(nameof(advancedBus));
-
-    private readonly IExchangeDeclareStrategy _exchangeStrategy = exchangeDeclareStrategy
-        ?? throw new ArgumentNullException(nameof(exchangeDeclareStrategy));
+    private readonly IRabbitMqChannelFactory _channelFactory = channelFactory
+        ?? throw new ArgumentNullException(nameof(channelFactory));
 
     private readonly RabbitMqConsumerOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
@@ -36,35 +33,75 @@ internal sealed class RabbitMqRetryTopologyCreator(IAdvancedBus advancedBus,
             return;
         }
 
-        var delays = _options.BrokerRetryDelays.Distinct();
+        var delays = _options.BrokerRetryDelays.Distinct().ToArray();
 
-        var consumerQueues = _subscriptions.Resolve().Select(t => t.QueueName).ToList();
+        var consumerQueues = _subscriptions.Resolve()
+            .Select(t => t.QueueName)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-        var returnExchange = await _exchangeStrategy.DeclareExchangeAsync(ReturnExchange, ExchangeType.Direct, token);
+        await using var channel = await _channelFactory.CreateAsync(token: token);
+
+        await channel.ExchangeDeclareAsync(
+            exchange: ReturnExchange,
+            type: ExchangeType.Direct,
+            durable: true,
+            autoDelete: false,
+            arguments: null,
+            passive: false,
+            noWait: false,
+            cancellationToken: token);
 
         foreach (var delay in delays)
         {
             var delayMilliseconds = checked((long)delay.TotalMilliseconds);
+            var exchangeName = $"{Prefix}retry-{delayMilliseconds}ms";
+            var queueName = $"{exchangeName}-queue";
 
-            var exchange = await _exchangeStrategy.DeclareExchangeAsync($"{Prefix}retry-{delayMilliseconds}ms", ExchangeType.Fanout, token);
+            await channel.ExchangeDeclareAsync(
+                exchange: exchangeName,
+                type: ExchangeType.Fanout,
+                durable: true,
+                autoDelete: false,
+                arguments: null,
+                passive: false,
+                noWait: false,
+                cancellationToken: token);
 
-            var queue = await _advancedBus.QueueDeclareAsync(
-                $"{Prefix}retry-{delayMilliseconds}ms-queue",
-                configuration =>
-                {
-                    configuration.AsDurable(true);
-                    configuration.AsAutoDelete(false);
-                    configuration.AsExclusive(false);
-                    configuration.WithMessageTtl(delay);
-                    configuration.WithDeadLetterExchange(returnExchange);
-                }, token);
+            var queueArguments = new Dictionary<string, object?>
+            {
+                ["x-message-ttl"] = delayMilliseconds,
+                ["x-dead-letter-exchange"] = ReturnExchange
+            };
 
-            await _advancedBus.QueueBindAsync(queue.Name, exchange.Name, string.Empty, cancellationToken: token);
+            await channel.QueueDeclareAsync(
+                queue: queueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: queueArguments,
+                passive: false,
+                noWait: false,
+                cancellationToken: token);
+
+            await channel.QueueBindAsync(
+                queue: queueName,
+                exchange: exchangeName,
+                routingKey: string.Empty,
+                arguments: null,
+                noWait: false,
+                cancellationToken: token);
         }
 
         foreach (var consumerQueue in consumerQueues)
         {
-            await _advancedBus.QueueBindAsync(consumerQueue, returnExchange.Name, consumerQueue, cancellationToken: token);
+            await channel.QueueBindAsync(
+                queue: consumerQueue,
+                exchange: ReturnExchange,
+                routingKey: consumerQueue,
+                arguments: null,
+                noWait: false,
+                cancellationToken: token);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
@@ -301,7 +302,7 @@ public sealed class OutboxBatchProcessorTests
         return new OutboxBatchProcessor(
             store,
             transport,
-            new OutboxJsonSerializer(),
+            new MessageJsonSerializer(),
             Options.Create(options),
             logger ?? NullLogger<OutboxBatchProcessor>.Instance);
     }

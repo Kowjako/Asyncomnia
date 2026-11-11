@@ -2,6 +2,7 @@
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.Inbound;
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Retry;
 using Asyncomnia.Messaging.Transport;
@@ -27,10 +28,17 @@ public static class ServiceCollectionExtensions
 
         services.TryAddScoped<IOutboundMessagePipeline, TransportMessagePipeline>();
 
+        // Stores all type of registered Command/Event Handlers, based on that we will
+        // create topology (queues and appropriate binding keys)
         services.TryAddSingleton<IMessageHandlerCatalog, MessageHandlerCatalog>();
+        
+        // Maps evnet/command type to dispatch delegate, used by rabbitmq consumer
+        services.TryAddSingleton<IMessageDispatchCatalog, MessageDispatchCatalog>();
 
         services.AddOptions<InMemoryRetryOptions>();
         services.TryAddSingleton<IInMemoryRetryExecutor, InMemoryRetryExecutor>();
+
+        services.TryAddSingleton<MessageJsonSerializer>();
 
         return new AsyncomniaMessagingBuilder(services);
     }

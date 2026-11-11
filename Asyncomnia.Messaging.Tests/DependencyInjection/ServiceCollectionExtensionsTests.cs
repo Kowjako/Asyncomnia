@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Retry;
 using Asyncomnia.Messaging.Tests.TestDoubles;
@@ -98,6 +99,36 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.Equal(
             typeof(InMemoryRetryExecutor),
             registration.ImplementationType);
+    }
+
+    [Fact]
+    public void AddAsyncomniaMessaging_RegistersMessageJsonSerializerAsSingleton()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging();
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(MessageJsonSerializer));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(MessageJsonSerializer),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void AddAsyncomniaMessaging_RegistersMessageDispatchCatalogAsSingleton()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging();
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IMessageDispatchCatalog));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(typeof(MessageDispatchCatalog), registration.ImplementationType);
     }
 
     [Fact]

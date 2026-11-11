@@ -1,7 +1,8 @@
+using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
-using EasyNetQ;
-using EasyNetQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Moq;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.DeadLettering;
 
@@ -10,75 +11,76 @@ public sealed class RabbitMqDeadLetterPublisherTests
     [Fact]
     public async Task PublishAsync_PublishesOriginalMessageWithoutExpiration()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var publisher = new RabbitMqDeadLetterPublisher(
-            advancedBus.Object,
+            brokerPublisher.Object,
             new RabbitMqDeadLetterRouteResolver());
-        var exchangeName = "asyncomnia/deadletter";
-        var queueName =
-            "deadletter/events/clients/subscription/billing-service";
         var messageId = Guid.NewGuid().ToString("D");
-        var expiration = TimeSpan.FromMinutes(5);
         ReadOnlyMemory<byte> body = new byte[] { 1, 2, 3 };
-        var context = CreateContext(
-            body,
-            new MessageProperties
-            {
-                MessageId = messageId,
-                Expiration = expiration
-            });
-        advancedBus
+        var properties = new BasicProperties
+        {
+            MessageId = messageId,
+            Expiration = "300000"
+        };
+        var context = CreateContext(body, properties);
+        brokerPublisher
             .Setup(x => x.PublishAsync(
-                exchangeName,
-                queueName,
+                "asyncomnia/deadletter",
+                "deadletter/events/clients/subscription/billing-service",
                 true,
-                true,
-                It.Is<MessageProperties>(properties =>
-                    properties.MessageId == messageId &&
-                    properties.Expiration == null),
-                It.Is<ReadOnlyMemory<byte>>(publishedBody =>
-                    publishedBody.Equals(body)),
+                It.Is<BasicProperties>(publishedProperties =>
+                    publishedProperties.MessageId == messageId &&
+                    publishedProperties.Expiration == null),
+                It.Is<ReadOnlyMemory<byte>>(publishedBody => publishedBody.Equals(body)),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
 
         await publisher.PublishAsync(context);
 
-        Assert.Equal(expiration, context.Properties.Expiration);
-        advancedBus.VerifyAll();
+        Assert.Equal("300000", context.Properties.Expiration);
+        brokerPublisher.VerifyAll();
     }
 
     [Fact]
-    public async Task PublishAsync_WhenCancellationIsAlreadyRequested_DoesNotCallEasyNetQ()
+    public async Task PublishAsync_WhenCancellationIsAlreadyRequested_DoesNotPublish()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var publisher = new RabbitMqDeadLetterPublisher(
-            advancedBus.Object,
+            brokerPublisher.Object,
             new RabbitMqDeadLetterRouteResolver());
-        var context = CreateContext(
-            new byte[] { 1 },
-            new MessageProperties());
+        var context = CreateContext(new byte[] { 1 }, new BasicProperties());
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => publisher.PublishAsync(
-                context,
-                cancellationTokenSource.Token));
+            () => publisher.PublishAsync(context, cancellationTokenSource.Token));
 
-        advancedBus.VerifyNoOtherCalls();
+        brokerPublisher.VerifyNoOtherCalls();
     }
 
-    private static ConsumeContext CreateContext(ReadOnlyMemory<byte> body, MessageProperties properties)
+    [Fact]
+    public async Task PublishAsync_WhenContextIsNull_Throws()
     {
-        var receivedInfo = new MessageReceivedInfo(
-            "consumer",
-            1,
-            false,
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
+        var publisher = new RabbitMqDeadLetterPublisher(
+            brokerPublisher.Object,
+            new RabbitMqDeadLetterRouteResolver());
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => publisher.PublishAsync(null!));
+
+        brokerPublisher.VerifyNoOtherCalls();
+    }
+
+    private static RabbitMqConsumeContext CreateContext(
+        ReadOnlyMemory<byte> body,
+        IReadOnlyBasicProperties properties)
+    {
+        return new RabbitMqConsumeContext(
+            "events/clients/subscription/billing-service",
             "events/clients",
             "client-created-event",
-            "events/clients/subscription/billing-service");
-        var services = Mock.Of<IServiceProvider>();
-
-        return new ConsumeContext(receivedInfo, properties, body, services, CancellationToken.None);
+            properties,
+            body);
     }
 }

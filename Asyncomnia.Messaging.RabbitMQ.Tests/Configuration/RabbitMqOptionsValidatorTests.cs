@@ -23,16 +23,58 @@ public sealed class RabbitMqOptionsValidatorTests
         Assert.Contains(nameof(RabbitMqOptions.ConnectionString), result.FailureMessage);
     }
 
-    [Fact]
-    public void Validate_WhenConnectionStringIsConfigured_ReturnsSuccess()
+    [Theory]
+    [InlineData("host=localhost")]
+    [InlineData("localhost")]
+    [InlineData("http://localhost")]
+    public void Validate_WhenConnectionStringIsNotAnAmqpUri_ReturnsFailure(
+        string connectionString)
     {
         var options = new RabbitMqOptions
         {
-            ConnectionString = "host=localhost"
+            ConnectionString = connectionString
+        };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(nameof(RabbitMqOptions.ConnectionString), result.FailureMessage);
+    }
+
+    [Theory]
+    [InlineData("amqp://guest:guest@localhost:5672/")]
+    [InlineData("amqps://rabbitmq.example.com/")]
+    public void Validate_WhenConnectionStringIsAnAmqpUri_ReturnsSuccess(
+        string connectionString)
+    {
+        var options = new RabbitMqOptions
+        {
+            ConnectionString = connectionString
         };
 
         var result = _validator.Validate(null, options);
 
         Assert.True(result.Succeeded);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_WhenPublisherChannelCountIsNotPositive_ReturnsFailure(
+        int publisherChannelCount)
+    {
+        var options = new RabbitMqOptions
+        {
+            ConnectionString =
+                "amqp://guest:guest@localhost:5672/",
+            PublisherChannelCount = publisherChannelCount
+        };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqOptions.PublisherChannelCount),
+            result.FailureMessage);
     }
 }

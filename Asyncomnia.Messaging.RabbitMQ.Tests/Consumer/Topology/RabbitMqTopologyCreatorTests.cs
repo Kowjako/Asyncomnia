@@ -2,226 +2,262 @@ using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
-using EasyNetQ;
-using EasyNetQ.Topology;
 using Microsoft.Extensions.Options;
 using Moq;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.Topology;
 
 public sealed class RabbitMqTopologyCreatorTests
 {
     [Fact]
-    public async Task DeclareAsync_WithoutSubscriptions_ReturnsEmptyCollectionWithoutCallingEasyNetQ()
+    public async Task DeclareAsync_WithoutSubscriptions_ReturnsEmptyCollectionWithoutCreatingChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy = new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
-        var creator = CreateCreator(advancedBus, exchangeDeclareStrategy);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var creator = CreateCreator(channelFactory);
 
-        var declaredSubscriptions = await creator.DeclareAsync();
+        var subscriptions = await creator.DeclareAsync();
 
-        Assert.Empty(declaredSubscriptions);
-        advancedBus.VerifyNoOtherCalls();
-        exchangeDeclareStrategy.VerifyNoOtherCalls();
+        Assert.Empty(subscriptions);
+        channelFactory.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task DeclareAsync_WithMultipleBindings_DeclaresDurableTopologyAndReturnsSubscription()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy = new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
         var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
+            channelFactory,
             eventTypes:
             [
                 typeof(ClientCreatedEvent),
                 typeof(ClientContractSignedEvent)
             ]);
-        var exchange = CreateExchange("events/clients");
-        var queue = CreateQueue("events/clients/subscription/test-service");
-        Action<IQueueDeclareConfiguration>? configureQueue = null;
-        exchangeDeclareStrategy
-            .Setup(x => x.DeclareExchangeAsync(
-                exchange.Name,
-                ExchangeType.Topic,
-                CancellationToken.None))
-            .ReturnsAsync(exchange);
-        advancedBus
-            .Setup(x => x.QueueDeclareAsync(
-                queue.Name,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                CancellationToken.None))
-            .Callback<string, Action<IQueueDeclareConfiguration>, CancellationToken>(
-                (_, configure, _) => configureQueue = configure)
-            .ReturnsAsync(queue);
-        advancedBus
-            .Setup(x => x.QueueBindAsync(
-                queue.Name,
-                exchange.Name,
-                "client-contract-signed",
-                null,
-                CancellationToken.None))
-            .Returns(Task.CompletedTask);
-        advancedBus
-            .Setup(x => x.QueueBindAsync(
-                queue.Name,
-                exchange.Name,
-                "client-created-event",
-                null,
-                CancellationToken.None))
-            .Returns(Task.CompletedTask);
-
-        var declaredSubscriptions = await creator.DeclareAsync();
-
-        Assert.Single(declaredSubscriptions);
-        Assert.NotNull(configureQueue);
-        var queueConfiguration = new Mock<IQueueDeclareConfiguration>(MockBehavior.Strict);
-        queueConfiguration
-            .Setup(x => x.AsDurable(true))
-            .Returns(queueConfiguration.Object);
-        queueConfiguration
-            .Setup(x => x.AsAutoDelete(false))
-            .Returns(queueConfiguration.Object);
-        queueConfiguration
-            .Setup(x => x.AsExclusive(false))
-            .Returns(queueConfiguration.Object);
-
-        configureQueue(queueConfiguration.Object);
-
-        queueConfiguration.VerifyAll();
-        exchangeDeclareStrategy.VerifyAll();
-        advancedBus.VerifyAll();
-    }
-
-    [Fact]
-    public async Task DeclareAsync_WithEventAndCommand_DeclaresSeparateTopologies()
-    {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy = new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
-        var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
-            eventTypes: [typeof(ClientCreatedEvent)],
-            commandTypes: [typeof(StartLongWorkJobCommand)]);
-        var commandExchange = CreateExchange("commands/long-work-job");
-        var commandQueue = CreateQueue("commands/long-work-job/subscription/test-service");
-        var eventExchange = CreateExchange("events/clients");
-        var eventQueue = CreateQueue("events/clients/subscription/test-service");
-        SetupTopology(
-            advancedBus,
-            exchangeDeclareStrategy,
-            commandExchange,
-            commandQueue,
-            "start-long-work-job-command");
-        SetupTopology(
-            advancedBus,
-            exchangeDeclareStrategy,
-            eventExchange,
-            eventQueue,
+        SetupChannel(channelFactory, channel);
+        SetupExchangeDeclaration(channel, "events/clients");
+        SetupQueueDeclaration(
+            channel,
+            "events/clients/subscription/test-service");
+        SetupBinding(
+            channel,
+            "events/clients/subscription/test-service",
+            "events/clients",
+            "client-contract-signed");
+        SetupBinding(
+            channel,
+            "events/clients/subscription/test-service",
+            "events/clients",
             "client-created-event");
 
-        var declaredSubscriptions = await creator.DeclareAsync();
+        var subscriptions = await creator.DeclareAsync();
 
-        Assert.Equal(2, declaredSubscriptions.Count);
-        exchangeDeclareStrategy.VerifyAll();
-        advancedBus.VerifyAll();
+        var subscription = Assert.Single(subscriptions);
+        Assert.Equal("events/clients", subscription.ExchangeName);
+        Assert.Equal(
+            "events/clients/subscription/test-service",
+            subscription.QueueName);
+        Assert.Equal(
+            ["client-contract-signed", "client-created-event"],
+            subscription.Bindings.Select(x => x.RoutingKey));
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
     [Fact]
-    public async Task DeclareAsync_WhenCancellationIsAlreadyRequested_DoesNotCallEasyNetQ()
+    public async Task DeclareAsync_WithEventAndCommand_DeclaresSeparateTopologiesUsingSingleChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy = new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
         var creator = CreateCreator(
-            advancedBus,
-            exchangeDeclareStrategy,
-            eventTypes: [typeof(ClientCreatedEvent)]);
-        using var cancellationTokenSource = new CancellationTokenSource();
-        cancellationTokenSource.Cancel();
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)],
+            commandTypes: [typeof(StartLongWorkJobCommand)]);
+        SetupChannel(channelFactory, channel);
+        SetupTopology(
+            channel,
+            "commands/long-work-job",
+            "commands/long-work-job/subscription/test-service",
+            "start-long-work-job-command");
+        SetupTopology(
+            channel,
+            "events/clients",
+            "events/clients/subscription/test-service",
+            "client-created-event");
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => creator.DeclareAsync(cancellationTokenSource.Token));
+        var subscriptions = await creator.DeclareAsync();
 
-        advancedBus.VerifyNoOtherCalls();
-        exchangeDeclareStrategy.VerifyNoOtherCalls();
+        Assert.Equal(2, subscriptions.Count);
+        channelFactory.Verify(
+            x => x.CreateAsync(null, CancellationToken.None),
+            Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
-    private static RabbitMqTopologyCreator CreateCreator(
-        Mock<IAdvancedBus> advancedBus,
-        Mock<IExchangeDeclareStrategy> exchangeDeclareStrategy,
-        IReadOnlyCollection<Type>? eventTypes = null,
+    [Fact]
+    public async Task DeclareAsync_WhenCancellationIsAlreadyRequested_DoesNotCreateChannel()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)]);
+        using var cancellationSource = new CancellationTokenSource();
+        cancellationSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => creator.DeclareAsync(cancellationSource.Token));
+
+        channelFactory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task DeclareAsync_WhenDeclarationFails_DisposesChannelAndPropagatesException()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var declarationException =
+            new InvalidOperationException("declaration failed");
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)]);
+        SetupChannel(channelFactory, channel);
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                "events/clients",
+                ExchangeType.Topic,
+                true,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .ThrowsAsync(declarationException);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.DeclareAsync());
+
+        Assert.Same(declarationException, exception);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public void Constructor_WithNullDependencies_Throws()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var subscriptionResolver = CreateSubscriptionResolver();
+
+        Assert.Throws<ArgumentNullException>(
+            () => new RabbitMqTopologyCreator(
+                null!,
+                subscriptionResolver));
+        Assert.Throws<ArgumentNullException>(
+            () => new RabbitMqTopologyCreator(
+                channelFactory.Object,
+                null!));
+    }
+
+    private static RabbitMqTopologyCreator CreateCreator(Mock<IRabbitMqChannelFactory> channelFactory,
+        IReadOnlyCollection<Type>? eventTypes = null, IReadOnlyCollection<Type>? commandTypes = null)
+    {
+        return new RabbitMqTopologyCreator(
+            channelFactory.Object,
+            CreateSubscriptionResolver(eventTypes, commandTypes));
+    }
+
+    private static RabbitMqSubscriptionResolver CreateSubscriptionResolver(IReadOnlyCollection<Type>? eventTypes = null,
         IReadOnlyCollection<Type>? commandTypes = null)
     {
-        var catalog = new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
+        var catalog =
+            new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
         catalog
             .SetupGet(x => x.EventTypes)
             .Returns(eventTypes ?? Array.Empty<Type>());
         catalog
             .SetupGet(x => x.CommandTypes)
             .Returns(commandTypes ?? Array.Empty<Type>());
-        var subscriptionResolver = new RabbitMqSubscriptionResolver(
+
+        return new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(new RabbitMqConsumerOptions
-            {
-                EndpointName = "test-service"
-            }));
-
-        return new RabbitMqTopologyCreator(
-            advancedBus.Object,
-            exchangeDeclareStrategy.Object,
-            subscriptionResolver);
+            Options.Create(
+                new RabbitMqConsumerOptions
+                {
+                    EndpointName = "test-service"
+                }));
     }
 
-    private static void SetupTopology(
-        Mock<IAdvancedBus> advancedBus,
-        Mock<IExchangeDeclareStrategy> exchangeDeclareStrategy,
-        Exchange exchange,
-        Queue queue,
-        string routingKey)
+    private static void SetupChannel(Mock<IRabbitMqChannelFactory> channelFactory, Mock<IChannel> channel)
     {
-        exchangeDeclareStrategy
-            .Setup(x => x.DeclareExchangeAsync(
-                exchange.Name,
+        channelFactory
+            .Setup(x => x.CreateAsync(null, CancellationToken.None))
+            .ReturnsAsync(channel.Object);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+    }
+
+    private static void SetupTopology(Mock<IChannel> channel, string exchangeName, string queueName, string routingKey)
+    {
+        SetupExchangeDeclaration(channel, exchangeName);
+        SetupQueueDeclaration(channel, queueName);
+        SetupBinding(
+            channel,
+            queueName,
+            exchangeName,
+            routingKey);
+    }
+
+    private static void SetupExchangeDeclaration(Mock<IChannel> channel, string exchangeName)
+    {
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                exchangeName,
                 ExchangeType.Topic,
-                CancellationToken.None))
-            .ReturnsAsync(exchange);
-        advancedBus
-            .Setup(x => x.QueueDeclareAsync(
-                queue.Name,
-                It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                CancellationToken.None))
-            .ReturnsAsync(queue);
-        advancedBus
-            .Setup(x => x.QueueBindAsync(
-                queue.Name,
-                exchange.Name,
-                routingKey,
+                true,
+                false,
                 null,
+                false,
+                false,
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
     }
 
-    private static Exchange CreateExchange(string name)
+    private static void SetupQueueDeclaration(Mock<IChannel> channel, string queueName)
     {
-        return new Exchange(
-            name,
-            ExchangeType.Topic,
-            true,
-            false,
-            new Dictionary<string, object>());
+        channel
+            .Setup(x => x.QueueDeclareAsync(
+                queueName,
+                true,
+                false,
+                false,
+                null,
+                false,
+                false,
+                CancellationToken.None))
+            .ReturnsAsync(new QueueDeclareOk(queueName, 0, 0));
     }
 
-    private static Queue CreateQueue(string name)
+    private static void SetupBinding(Mock<IChannel> channel, string queueName, string exchangeName, string routingKey)
     {
-        return new Queue(
-            name,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
+        channel
+            .Setup(x => x.QueueBindAsync(
+                queueName,
+                exchangeName,
+                routingKey,
+                null,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
     }
 }

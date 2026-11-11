@@ -1,0 +1,63 @@
+﻿using Asyncomnia.Messaging.Internal;
+using RabbitMQ.Client;
+
+namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
+
+internal static class RabbitMqMessagePropertiesMapper
+{
+    public const string JsonContentType = "application/json";
+    public const string Utf8ContentEncoding = "utf-8";
+
+    public static BasicProperties MapToBrokerProperties(Type messageType, MessageMetadata metadata)
+    {
+        ArgumentNullException.ThrowIfNull(messageType);
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        if (!typeof(IMessage).IsAssignableFrom(messageType))
+        {
+            throw new InvalidOperationException($"Type '{messageType}' does not implement {nameof(IMessage)}");
+        }
+
+        return new BasicProperties
+        {
+            ContentType = JsonContentType,
+            ContentEncoding = Utf8ContentEncoding,
+            Type = ClrMessageTypeResolver.GetContractType(messageType),
+            MessageId = metadata.MessageId.ToString("D"),
+            CorrelationId = (metadata.CorrelationId ?? metadata.MessageId).ToString("D"),
+            Timestamp = new AmqpTimestamp(metadata.CreatedAt.ToUnixTimeSeconds()),
+            DeliveryMode = DeliveryModes.Persistent
+        };
+    }
+
+    public static MessageMetadata MapToAsyncomniaProperties(IReadOnlyBasicProperties brokerProperties)
+    {
+        ArgumentNullException.ThrowIfNull(brokerProperties);
+
+        if (!Guid.TryParse(brokerProperties.MessageId, out var messageId) || messageId == Guid.Empty)
+        {
+            throw new InvalidOperationException($"RabbitMQ message has invalid MessageId: {brokerProperties.MessageId}");
+        }
+
+        if (!Guid.TryParse(brokerProperties.CorrelationId, out var correlationId) || correlationId == Guid.Empty)
+        {
+            throw new InvalidOperationException($"RabbitMQ message has invalid CorrelationId: {brokerProperties.CorrelationId}");
+        }
+
+        DateTimeOffset createdAt;
+
+        try
+        {
+            createdAt = DateTimeOffset.FromUnixTimeSeconds(brokerProperties.Timestamp.UnixTime);
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            throw new InvalidOperationException($"RabbitMQ message has invalid Timestamp: {brokerProperties.Timestamp.UnixTime}", exception);
+        }
+
+        return new MessageMetadata(messageId, createdAt) 
+        { 
+            CorrelationId = correlationId 
+        };
+    }
+}

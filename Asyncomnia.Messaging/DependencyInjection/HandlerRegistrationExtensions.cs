@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Handlers;
+using Asyncomnia.Messaging.Inbound;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -16,7 +17,9 @@ public static class HandlerRegistrationExtensions
         // Prevents duplicate registration of the same handler implementation.
         // Multiple different handlers for one event are allowed.
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<IEventHandler<TEvent>, THandler>());
+
         builder.Services.TryAddMessageHandlerType(typeof(TEvent));
+        builder.Services.TryAddMessageDispatchDescriptor(MessageDispatchDescriptorFactory.CreateEvent<TEvent>());
         return builder;
     }
 
@@ -29,8 +32,9 @@ public static class HandlerRegistrationExtensions
         // Prevents duplicate registration of the same implementation.
         // The dispatcher requires exactly one command handler.
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ICommandHandler<TCommand>, THandler>());
-        builder.Services.TryAddMessageHandlerType(typeof(TCommand));
 
+        builder.Services.TryAddMessageHandlerType(typeof(TCommand));
+        builder.Services.TryAddMessageDispatchDescriptor(MessageDispatchDescriptorFactory.CreateCommand<TCommand>());
         return builder;
     }
 }

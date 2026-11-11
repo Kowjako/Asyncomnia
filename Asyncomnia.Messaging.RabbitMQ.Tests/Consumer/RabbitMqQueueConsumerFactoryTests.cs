@@ -1,145 +1,173 @@
+using Asyncomnia.Messaging.Dispatching;
+using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
-using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
-using EasyNetQ;
-using EasyNetQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
-using RabbitQueue = EasyNetQ.Topology.Queue;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 
 public sealed class RabbitMqQueueConsumerFactoryTests
 {
     [Fact]
-    public async Task StartAsync_AppliesSettingsAndConfiguresDeclaredQueue()
+    public async Task StartAsync_AppliesSettingsAndStartsConsumerForSubscriptionQueue()
     {
-        var configuration = new CapturingConsumeConfiguration();
-        var consumer = new Mock<IAsyncDisposable>(MockBehavior.Strict);
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        advancedBus
-            .Setup(x => x.ConsumeAsync(It.IsAny<Action<IConsumeConfiguration>>()))
-            .Callback<Action<IConsumeConfiguration>>(configure => configure(configuration))
-            .ReturnsAsync(consumer.Object);
-        var factory = CreateFactory(advancedBus);
-        var subscription = CreateDeclaredSubscription(
-            new RabbitMqConsumerSettings(2, 3, 4));
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        IAsyncBasicConsumer? capturedConsumer = null;
+        channel
+            .Setup(x => x.BasicQosAsync(0, 3, false, CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        channel
+            .Setup(x => x.BasicConsumeAsync(
+                "events/clients/subscription/test-service",
+                false,
+                string.Empty,
+                false,
+                false,
+                null,
+                It.IsAny<IAsyncBasicConsumer>(),
+                CancellationToken.None))
+            .Callback<string, bool, string, bool, bool, IDictionary<string, object?>?, IAsyncBasicConsumer, CancellationToken>(
+                (_, _, _, _, _, _, consumer, _) => capturedConsumer = consumer)
+            .ReturnsAsync("consumer-tag");
+        var channelFactory = new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        CreateChannelOptions? capturedOptions = null;
+        channelFactory
+            .Setup(x => x.CreateAsync(
+                It.IsAny<CreateChannelOptions>(),
+                CancellationToken.None))
+            .Callback<CreateChannelOptions?, CancellationToken>(
+                (options, _) => capturedOptions = options)
+            .ReturnsAsync(channel.Object);
+        await using var dependencies = CreateFactory(channelFactory.Object);
+        var subscription = CreateSubscription(new RabbitMqConsumerSettings(2, 3, 4));
 
-        var result = await factory.StartAsync(subscription);
+        var result = await dependencies.Factory.StartAsync(subscription);
 
-        Assert.Same(consumer.Object, result);
-        Assert.Equal((ushort)3, configuration.PrefetchCount);
-        Assert.Equal((ushort)4, configuration.DispatcherConcurrency);
-        Assert.True(configuration.Queue.HasValue);
-        Assert.Equal(subscription.Queue, configuration.Queue.Value);
-        Assert.NotNull(configuration.RegisterHandlers);
-        Assert.NotNull(configuration.ConfigureQueue);
-
-        var handlerRegistration = new Mock<IHandlerRegistration>(MockBehavior.Strict);
-        handlerRegistration
-            .SetupSet(x => x.ThrowOnNoMatchingHandler = true);
-        configuration.RegisterHandlers!(handlerRegistration.Object);
-
-        var queueConfiguration = new Mock<IPerQueueConsumeConfiguration>(MockBehavior.Strict);
-        configuration.ConfigureQueue!(queueConfiguration.Object);
-
-        handlerRegistration.VerifyAll();
-        queueConfiguration.VerifyNoOtherCalls();
-        advancedBus.VerifyAll();
+        Assert.Same(channel.Object, result);
+        Assert.NotNull(capturedConsumer);
+        Assert.Same(channel.Object, capturedConsumer!.Channel);
+        Assert.NotNull(capturedOptions);
+        Assert.False(capturedOptions!.PublisherConfirmationsEnabled);
+        Assert.False(capturedOptions.PublisherConfirmationTrackingEnabled);
+        Assert.Equal((ushort)4, capturedOptions.ConsumerDispatchConcurrency);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
     [Fact]
-    public async Task StartAsync_WhenCancellationIsAlreadyRequested_DoesNotCallEasyNetQ()
+    public async Task StartAsync_WhenCancellationIsAlreadyRequested_DoesNotCreateChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var factory = CreateFactory(advancedBus);
-        var subscription = CreateDeclaredSubscription(
-            new RabbitMqConsumerSettings(1, 1, 1));
+        var channelFactory = new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        await using var dependencies = CreateFactory(channelFactory.Object);
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => factory.StartAsync(subscription, cancellationTokenSource.Token));
+            () => dependencies.Factory.StartAsync(
+                CreateSubscription(new RabbitMqConsumerSettings(1, 1, 1)),
+                cancellationTokenSource.Token));
 
-        advancedBus.VerifyNoOtherCalls();
+        channelFactory.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task StartAsync_WhenSubscriptionIsNull_DoesNotCallEasyNetQ()
+    public async Task StartAsync_WhenSubscriptionIsNull_DoesNotCreateChannel()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var factory = CreateFactory(advancedBus);
+        var channelFactory = new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        await using var dependencies = CreateFactory(channelFactory.Object);
 
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => factory.StartAsync(null!));
+            () => dependencies.Factory.StartAsync(null!));
 
-        advancedBus.VerifyNoOtherCalls();
+        channelFactory.VerifyNoOtherCalls();
     }
 
-    private static RabbitMqQueueConsumerFactory CreateFactory(Mock<IAdvancedBus> advancedBus)
+    [Fact]
+    public async Task StartAsync_WhenConsumerRegistrationFails_DisposesChannelAndRethrows()
     {
-        var scopeFactory = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
-        var messageConsumer = new RabbitMqMessageConsumer(scopeFactory.Object);
-        var registrar = new RabbitMqHandlerRegistrar(messageConsumer);
+        var expectedException = new InvalidOperationException("consume failed");
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicQosAsync(0, 1, false, CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        channel
+            .Setup(x => x.BasicConsumeAsync(
+                It.IsAny<string>(),
+                false,
+                string.Empty,
+                false,
+                false,
+                null,
+                It.IsAny<IAsyncBasicConsumer>(),
+                CancellationToken.None))
+            .ThrowsAsync(expectedException);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        var channelFactory = new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        channelFactory
+            .Setup(x => x.CreateAsync(
+                It.IsAny<CreateChannelOptions>(),
+                CancellationToken.None))
+            .ReturnsAsync(channel.Object);
+        await using var dependencies = CreateFactory(channelFactory.Object);
 
-        return new RabbitMqQueueConsumerFactory(advancedBus.Object, registrar);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dependencies.Factory.StartAsync(
+                CreateSubscription(new RabbitMqConsumerSettings(1, 1, 1))));
+
+        Assert.Same(expectedException, exception);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
     }
 
-    private static RabbitMqDeclaredSubscription CreateDeclaredSubscription(RabbitMqConsumerSettings settings)
+    private static FactoryDependencies CreateFactory(IRabbitMqChannelFactory channelFactory)
     {
-        var subscription = new RabbitMqSubscription
+        var services = new ServiceCollection();
+        var provider = services.BuildServiceProvider();
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        var errorStrategy = new RabbitMqConsumeErrorStrategy(
+            deadLetterPublisher.Object,
+            delayedRetryPublisher.Object,
+            Options.Create(new RabbitMqConsumerOptions()),
+            NullLogger<RabbitMqConsumeErrorStrategy>.Instance);
+        var messageConsumer = new RabbitMqMessageConsumer(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new MessageJsonSerializer(),
+            new MessageDispatchCatalog([]),
+            errorStrategy);
+
+        return new FactoryDependencies(
+            provider,
+            new RabbitMqQueueConsumerFactory(channelFactory, messageConsumer));
+    }
+
+    private static RabbitMqSubscription CreateSubscription(RabbitMqConsumerSettings settings)
+    {
+        return new RabbitMqSubscription
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
             Bindings = [],
             ConsumerSettings = settings
         };
-
-        var queue = new RabbitQueue(
-            subscription.QueueName,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
-
-        return new RabbitMqDeclaredSubscription(subscription, queue);
     }
 
-    private sealed class CapturingConsumeConfiguration : IConsumeConfiguration
+    private sealed record FactoryDependencies(
+        ServiceProvider Provider,
+        RabbitMqQueueConsumerFactory Factory) : IAsyncDisposable
     {
-        public ushort? PrefetchCount { get; private set; }
-
-        public ushort? DispatcherConcurrency { get; private set; }
-
-        public RabbitQueue? Queue { get; private set; }
-
-        public Action<IHandlerRegistration>? RegisterHandlers { get; private set; }
-
-        public Action<IPerQueueConsumeConfiguration>? ConfigureQueue { get; private set; }
-
-        public IConsumeConfiguration WithPrefetchCount(ushort prefetchCount)
+        public ValueTask DisposeAsync()
         {
-            PrefetchCount = prefetchCount;
-            return this;
-        }
-
-        public IConsumeConfiguration WithConsumerDispatcherConcurrency(ushort consumerDispatcherConcurrency)
-        {
-            DispatcherConcurrency = consumerDispatcherConcurrency;
-            return this;
-        }
-
-        public IConsumeConfiguration ForQueue(in RabbitQueue queue, MessageHandler handler, Action<IPerQueueConsumeConfiguration> configure)
-        {
-            throw new InvalidOperationException("Raw handler overload was not expected.");
-        }
-
-        public IConsumeConfiguration ForQueue(in RabbitQueue queue, Action<IHandlerRegistration> handlers, Action<IPerQueueConsumeConfiguration> configure)
-        {
-            Queue = queue;
-            RegisterHandlers = handlers;
-            ConfigureQueue = configure;
-            return this;
+            return Provider.DisposeAsync();
         }
     }
 }

@@ -1,9 +1,10 @@
-﻿using Asyncomnia.Messaging.Outbound;
-using Asyncomnia.Messaging.Reliability.Internal;
+﻿using Asyncomnia.Messaging.Internal;
+using Asyncomnia.Messaging.Internal.Serialization;
+using Asyncomnia.Messaging.Outbound;
 
 namespace Asyncomnia.Messaging.Reliability.Outbox;
 
-internal sealed class OutboxMessagePipeline(OutboxJsonSerializer serializer, IOutboxWriter writer) : IOutboundMessagePipeline
+internal sealed class OutboxMessagePipeline(MessageJsonSerializer serializer, IOutboxWriter writer) : IOutboundMessagePipeline
 {
     public Task PublishAsync<TEvent>(MessageEnvelope<TEvent> envelope, CancellationToken cancellationToken = default)
        where TEvent : class, IEvent
@@ -24,7 +25,7 @@ internal sealed class OutboxMessagePipeline(OutboxJsonSerializer serializer, IOu
 
         var messageType = envelope.Message.GetType();
         var contractType = ClrMessageTypeResolver.GetContractType(messageType);
-        var messageJson = serializer.Serialize(envelope.Message, messageType);
+        var messageJson = serializer.SerializeToString(envelope.Message);
 
         var outboxMessage = new OutboxMessage(envelope.Metadata.MessageId,
             contractType, messageJson, envelope.Metadata.CorrelationId, envelope.Metadata.CreatedAt);

@@ -4,13 +4,12 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
-using EasyNetQ;
-using EasyNetQ.Topology;
 using Microsoft.Extensions.Options;
 using Moq;
-using RabbitQueue = EasyNetQ.Topology.Queue;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 
@@ -37,11 +36,11 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var startedExchanges = new List<string>();
         consumerFactory
             .Setup(x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None))
-            .Callback<RabbitMqDeclaredSubscription, CancellationToken>(
+            .Callback<RabbitMqSubscription, CancellationToken>(
                 (subscription, _) =>
-                    startedExchanges.Add(subscription.Subscription.ExchangeName))
+                    startedExchanges.Add(subscription.ExchangeName))
             .Returns(() => Task.FromResult(consumers.Dequeue()));
         var fixture = CreateFixture(
             consumerFactory,
@@ -60,7 +59,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
             startedExchanges);
         consumerFactory.Verify(
             x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None),
             Times.Exactly(3));
 
@@ -143,7 +142,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var consumerFactory = new Mock<IRabbitMqQueueConsumerFactory>(MockBehavior.Strict);
         consumerFactory
             .SetupSequence(x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None))
             .ReturnsAsync(startedConsumer)
             .ThrowsAsync(startException);
@@ -160,7 +159,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
         Assert.Equal(1, startedConsumer.DisposeCalls);
         consumerFactory.Verify(
             x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None),
             Times.Exactly(2));
 
@@ -188,7 +187,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var consumerFactory = new Mock<IRabbitMqQueueConsumerFactory>(MockBehavior.Strict);
         consumerFactory
             .SetupSequence(x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None))
             .ReturnsAsync(startedConsumer)
             .ThrowsAsync(startException);
@@ -227,7 +226,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var consumerFactory = new Mock<IRabbitMqQueueConsumerFactory>(MockBehavior.Strict);
         consumerFactory
             .Setup(x => x.StartAsync(
-                It.IsAny<RabbitMqDeclaredSubscription>(),
+                It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None))
             .Returns(() => Task.FromResult(availableConsumers.Dequeue()));
         var fixture = CreateFixture(
@@ -272,42 +271,67 @@ public sealed class RabbitMqConsumerHostedServiceTests
             new MessageRouteResolver(),
             Options.Create(options));
         var subscriptions = resolver.Resolve();
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var exchangeDeclareStrategy = new Mock<IExchangeDeclareStrategy>(MockBehavior.Strict);
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+
+        if (subscriptions.Count > 0)
+        {
+            channelFactory
+                .Setup(x => x.CreateAsync(
+                    null,
+                    CancellationToken.None))
+                .ReturnsAsync(channel.Object);
+            channel
+                .Setup(x => x.DisposeAsync())
+                .Returns(ValueTask.CompletedTask);
+        }
 
         foreach (var subscription in subscriptions)
         {
-            var exchange = CreateExchange(subscription.ExchangeName);
-            var queue = CreateQueue(subscription.QueueName);
-            exchangeDeclareStrategy
-                .Setup(x => x.DeclareExchangeAsync(
-                    exchange.Name,
+            channel
+                .Setup(x => x.ExchangeDeclareAsync(
+                    subscription.ExchangeName,
                     ExchangeType.Topic,
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(exchange);
-            advancedBus
+                    true,
+                    false,
+                    null,
+                    false,
+                    false,
+                    CancellationToken.None))
+                .Returns(Task.CompletedTask);
+            channel
                 .Setup(x => x.QueueDeclareAsync(
-                    queue.Name,
-                    It.IsAny<Action<IQueueDeclareConfiguration>>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(queue);
+                    subscription.QueueName,
+                    true,
+                    false,
+                    false,
+                    null,
+                    false,
+                    false,
+                    CancellationToken.None))
+                .ReturnsAsync(
+                    new QueueDeclareOk(
+                        subscription.QueueName,
+                        0,
+                        0));
 
             foreach (var binding in subscription.Bindings)
             {
-                advancedBus
+                channel
                     .Setup(x => x.QueueBindAsync(
-                        queue.Name,
-                        exchange.Name,
+                        subscription.QueueName,
+                        subscription.ExchangeName,
                         binding.RoutingKey,
                         null,
-                        It.IsAny<CancellationToken>()))
+                        false,
+                        CancellationToken.None))
                     .Returns(Task.CompletedTask);
             }
         }
 
         var topologyCreator = new RabbitMqTopologyCreator(
-            advancedBus.Object,
-            exchangeDeclareStrategy.Object,
+            channelFactory.Object,
             resolver);
         var retryTopologyCreator =
             new Mock<IRabbitMqRetryTopologyCreator>(MockBehavior.Strict);
@@ -320,7 +344,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
             deadLetterTopologyCreator
                 .Setup(x => x.DeclareAsync(
                     It.Is<IReadOnlyCollection<
-                        RabbitMqDeclaredSubscription>>(declared =>
+                        RabbitMqSubscription>>(declared =>
                         declared.Count == subscriptions.Count),
                     CancellationToken.None))
                 .Returns(Task.CompletedTask);
@@ -330,7 +354,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
             deadLetterTopologyCreator
                 .Setup(x => x.DeclareAsync(
                     It.IsAny<IReadOnlyCollection<
-                        RabbitMqDeclaredSubscription>>(),
+                        RabbitMqSubscription>>(),
                     CancellationToken.None))
                 .ThrowsAsync(deadLetterTopologyException);
         }
@@ -358,43 +382,23 @@ public sealed class RabbitMqConsumerHostedServiceTests
 
         return new HostedServiceFixture(
             service,
-            advancedBus,
-            exchangeDeclareStrategy,
+            channelFactory,
+            channel,
             retryTopologyCreator,
             deadLetterTopologyCreator);
     }
 
-    private static Exchange CreateExchange(string name)
-    {
-        return new Exchange(
-            name,
-            ExchangeType.Topic,
-            true,
-            false,
-            new Dictionary<string, object>());
-    }
-
-    private static RabbitQueue CreateQueue(string name)
-    {
-        return new RabbitQueue(
-            name,
-            true,
-            false,
-            false,
-            new Dictionary<string, object>());
-    }
-
     private sealed record HostedServiceFixture(
         RabbitMqConsumerHostedService Service,
-        Mock<IAdvancedBus> AdvancedBus,
-        Mock<IExchangeDeclareStrategy> ExchangeDeclareStrategy,
+        Mock<IRabbitMqChannelFactory> ChannelFactory,
+        Mock<IChannel> Channel,
         Mock<IRabbitMqRetryTopologyCreator> RetryTopologyCreator,
         Mock<IRabbitMqDeadLetterTopologyCreator> DeadLetterTopologyCreator)
     {
         public void VerifyTopology()
         {
-            AdvancedBus.VerifyAll();
-            ExchangeDeclareStrategy.VerifyAll();
+            ChannelFactory.VerifyAll();
+            Channel.VerifyAll();
             RetryTopologyCreator.VerifyAll();
             DeadLetterTopologyCreator.VerifyAll();
         }

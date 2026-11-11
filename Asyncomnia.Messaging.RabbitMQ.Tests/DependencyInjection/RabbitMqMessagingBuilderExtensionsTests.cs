@@ -5,10 +5,12 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
-using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Connection;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Transport;
 using Asyncomnia.Messaging.Transport;
-using EasyNetQ;
-using EasyNetQ.Consumer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -18,19 +20,144 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.DependencyInjection;
 
 public sealed class RabbitMqMessagingBuilderExtensionsTests
 {
+    private const string ConnectionString =
+        "amqp://guest:guest@localhost:5672/";
+
     [Fact]
     public void UseRabbitMq_RegistersOutboundTransportAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
 
         var registration = Assert.Single(
             services,
             x => x.ServiceType == typeof(IOutboundTransport));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Equal("EasyNetQOutboundTransport", registration.ImplementationType?.Name);
+        Assert.Equal(
+            typeof(RabbitMqOutboundTransport),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersConnectionProviderAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqConnectionProvider));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqConnectionProvider),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersChannelFactoryAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqChannelFactory));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqChannelFactory),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersChannelPoolAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqChannelPool));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqChannelPool),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersPublisherAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqPublisher));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqPublisher),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_WhenConnectionProviderIsResolved_AllowsSynchronousServiceProviderDisposal()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+        var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRabbitMqConnectionProvider>();
+
+        var exception = Record.Exception(provider.Dispose);
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void UseRabbitMq_WhenChannelPoolIsResolved_AllowsSynchronousServiceProviderDisposal()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+        var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRabbitMqChannelPool>();
+
+        var exception = Record.Exception(provider.Dispose);
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void UseRabbitMq_RegistersExchangeCreatorAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IRabbitMqExchangeCreator));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqExchangeCreator),
+            registration.ImplementationType);
     }
 
     [Fact]
@@ -41,7 +168,7 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         services.AddSingleton(transport);
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
 
         var registration = Assert.Single(
             services,
@@ -54,62 +181,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=rabbitmq");
+        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
         using var provider = services.BuildServiceProvider();
 
         var options = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
 
-        Assert.Equal("host=rabbitmq", options.ConnectionString);
-    }
-
-    [Fact]
-    public void UseRabbitMq_EnablesPublisherConfirms()
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
-        using var provider = services.BuildServiceProvider();
-
-        var configuration = provider.GetRequiredService<ConnectionConfiguration>();
-
-        Assert.True(configuration.PublisherConfirms);
-    }
-
-    [Fact]
-    public void UseRabbitMq_ConfiguresAsyncomniaRoutingConventions()
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
-        using var provider = services.BuildServiceProvider();
-        var conventions = provider.GetRequiredService<IConventions>();
-
-        var exchangeName = conventions.ExchangeNamingConvention(typeof(ClientCreatedEvent));
-        var routingKey = conventions.TopicNamingConvention(typeof(ClientCreatedEvent));
-
-        Assert.Equal("events/clients", exchangeName);
-        Assert.Equal("client-created-event", routingKey);
-    }
-
-    [Fact]
-    public void UseRabbitMq_ForNonAsyncomniaMessage_PreservesDefaultConventions()
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = "host=localhost");
-        using var provider = services.BuildServiceProvider();
-        var conventions = provider.GetRequiredService<IConventions>();
-        var defaultConventions = new Conventions(provider.GetRequiredService<ITypeNameSerializer>());
-
-        var exchangeName = conventions.ExchangeNamingConvention(typeof(NonAsyncomniaMessage));
-        var routingKey = conventions.TopicNamingConvention(typeof(NonAsyncomniaMessage));
-
-        Assert.Equal(
-            defaultConventions.ExchangeNamingConvention(typeof(NonAsyncomniaMessage)),
-            exchangeName);
-        Assert.Equal(
-            defaultConventions.TopicNamingConvention(typeof(NonAsyncomniaMessage)),
-            routingKey);
+        Assert.Equal(ConnectionString, options.ConnectionString);
     }
 
     [Fact]
@@ -224,24 +301,22 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_ReplacesEasyNetQConsumeErrorStrategy()
+    public void UseRabbitMqConsumer_RegistersConsumeErrorStrategyAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
         builder
             .UseRabbitMq(options =>
-                options.ConnectionString = "host=localhost")
+                options.ConnectionString = ConnectionString)
             .UseRabbitMqConsumer(options =>
                 options.EndpointName = "billing-service");
 
         var registration = Assert.Single(
             services,
-            x => x.ServiceType == typeof(IConsumeErrorStrategy));
+            x => x.ServiceType == typeof(RabbitMqConsumeErrorStrategy));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Equal(
-            typeof(RabbitMqConsumeErrorStrategy),
-            registration.ImplementationType);
+        Assert.Equal(typeof(RabbitMqConsumeErrorStrategy), registration.ImplementationType);
     }
 
     [Fact]
@@ -275,21 +350,6 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
             x => x.ServiceType == typeof(RabbitMqMessageConsumer));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
         Assert.Equal(typeof(RabbitMqMessageConsumer), registration.ImplementationType);
-    }
-
-    [Fact]
-    public void UseRabbitMqConsumer_RegistersHandlerRegistrarAsSingleton()
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
-
-        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
-
-        var registration = Assert.Single(
-            services,
-            x => x.ServiceType == typeof(RabbitMqHandlerRegistrar));
-        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Equal(typeof(RabbitMqHandlerRegistrar), registration.ImplementationType);
     }
 
     [Fact]

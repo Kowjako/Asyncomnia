@@ -1,29 +1,31 @@
 ﻿using System.Text;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
-using EasyNetQ;
-using EasyNetQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 
 internal interface IRabbitMqDelayedRetryPublisher
 {
-    Task<bool> TryPublishAsync(ConsumeContext context, CancellationToken token = default);
+    Task<bool> TryPublishAsync(RabbitMqConsumeContext context, CancellationToken token = default);
 }
 
-internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IOptions<RabbitMqConsumerOptions> options) : IRabbitMqDelayedRetryPublisher
+internal sealed class RabbitMqDelayedRetryPublisher(IRabbitMqPublisher rabbitMqPublisher, IOptions<RabbitMqConsumerOptions> options) : IRabbitMqDelayedRetryPublisher
 {
     private const string RetryCountHeader = "x-asyncomnia-broker-retry";
     private const string Prefix = "asyncomnia/";
 
-    private readonly IAdvancedBus _advancedBus = advancedBus
-        ?? throw new ArgumentNullException(nameof(advancedBus));
+    private readonly IRabbitMqPublisher _rabbitMqPublisher = rabbitMqPublisher
+        ?? throw new ArgumentNullException(nameof(rabbitMqPublisher));
 
     private readonly RabbitMqConsumerOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
 
-    public async Task<bool> TryPublishAsync(ConsumeContext context, CancellationToken token = default)
+    public async Task<bool> TryPublishAsync(RabbitMqConsumeContext context, CancellationToken token = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
         if (!_options.BrokerRetriesEnabled)
         {
             return false;
@@ -42,23 +44,22 @@ internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IO
 
         var properties = WithRetryCount(context.Properties, nextRetryCount);
 
-        await _advancedBus.PublishAsync(
+        await _rabbitMqPublisher.PublishAsync(
             exchange: $"{Prefix}retry-{delayMilliseconds}ms",
             // save source queue name, so after Deadlettering
             // it will route to source queue via retry-return exchange
-            routingKey: context.ReceivedInfo.Queue,
+            routingKey: context.QueueName,
             mandatory: true,
-            publisherConfirms: true,
             properties: properties,
             body: context.Body,
-            cancellationToken: token);
+            token);
 
         return true;
     }
 
-    private static int GetRetryCount(MessageProperties props)
+    private static int GetRetryCount(IReadOnlyBasicProperties props)
     {
-        if (!props.HeadersPresent || !props.Headers.TryGetValue(RetryCountHeader, out var value))
+        if (props.Headers is null || !props.Headers.TryGetValue(RetryCountHeader, out var value))
         {
             return 0;
         }
@@ -74,15 +75,16 @@ internal sealed class RabbitMqDelayedRetryPublisher(IAdvancedBus advancedBus, IO
         };
     }
 
-    private static MessageProperties WithRetryCount(MessageProperties props, int retryCount)
+    private static BasicProperties WithRetryCount(IReadOnlyBasicProperties props, int retryCount)
     {
-        var headers = props.HeadersPresent
-            ? new Dictionary<string, object>(props.Headers)
-            : new Dictionary<string, object>();
+        // Create new headers dictionary to not override received headers from RabbitMqConsumeContext
+        var headers = props.Headers is null
+            ? new Dictionary<string, object?>()
+            : new Dictionary<string, object?>(props.Headers);
 
         headers[RetryCountHeader] = retryCount;
 
-        return props with
+        return new BasicProperties(props)
         {
             Headers = headers,
             Expiration = null
