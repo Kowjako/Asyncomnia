@@ -40,7 +40,7 @@ internal sealed class RabbitMqMessageConsumer(
 
         try
         {
-            await ProcessAsync(delivery, token);
+            await ProcessAsync(delivery, subscription, token);
             response = AckResponse.Ack;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -57,7 +57,7 @@ internal sealed class RabbitMqMessageConsumer(
         await ReturnResponseToBrokerAsync(channel, delivery.DeliveryTag, response, CancellationToken.None);
     }
 
-    private async Task ProcessAsync(BasicDeliverEventArgs delivery, CancellationToken token)
+    private async Task ProcessAsync(BasicDeliverEventArgs delivery, RabbitMqSubscription subscription, CancellationToken token)
     {
         var contractType = delivery.BasicProperties.Type;
 
@@ -69,6 +69,11 @@ internal sealed class RabbitMqMessageConsumer(
         if (!_dispatchCatalog.TryGet(contractType, out var descriptor) || descriptor is null)
         {
             throw new InvalidOperationException($"No dispatch descriptor registered for contract {contractType}");
+        }
+
+        if (!subscription.Bindings.Any(x => x.MessageType == descriptor.MessageType))
+        {
+            throw new InvalidOperationException($"Message type '{descriptor.MessageType.FullName}' is not configured for subscription queue '{subscription.QueueName}'");
         }
 
         var metadata = RabbitMqMessagePropertiesMapper.MapToAsyncomniaProperties(delivery.BasicProperties);

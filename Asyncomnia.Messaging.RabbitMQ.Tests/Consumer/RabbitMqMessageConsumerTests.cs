@@ -8,6 +8,7 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -177,6 +178,60 @@ public sealed class RabbitMqMessageConsumerTests
     }
 
     [Fact]
+    public async Task ConsumeAsync_WhenMessageTypeIsNotConfiguredForSubscription_DoesNotCreateScopeAndNacksWithoutRequeue()
+    {
+        var createdPipelines = 0;
+        await using var provider = CreateProvider(_ =>
+        {
+            createdPipelines++;
+            return new DisposableInboundMessagePipeline();
+        });
+        var logger =
+            new CapturingLogger<RabbitMqConsumeErrorStrategy>();
+        var errorDependencies = CreateErrorStrategy(
+            deadLetteringEnabled: false,
+            logger);
+        errorDependencies.DelayedRetryPublisher
+            .Setup(x => x.TryPublishAsync(
+                It.IsAny<RabbitMqConsumeContext>(),
+                CancellationToken.None))
+            .ReturnsAsync(false);
+        var consumer = CreateConsumer(provider, errorDependencies.Strategy);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicNackAsync(
+                1,
+                false,
+                false,
+                CancellationToken.None))
+            .Returns(ValueTask.CompletedTask);
+        var subscription = CreateSubscription(
+            typeof(ClientContractSignedEvent));
+
+        await consumer.ConsumeAsync(
+            channel.Object,
+            subscription,
+            CreateDelivery(new ClientCreatedEvent("Acme")),
+            CancellationToken.None);
+
+        Assert.Equal(0, createdPipelines);
+        var logEntry = Assert.Single(
+            logger.Entries,
+            entry => entry.LogLevel == LogLevel.Error);
+        var exception = Assert.IsType<InvalidOperationException>(
+            logEntry.Exception);
+        var expectedMessage =
+            $"Message type '{typeof(ClientCreatedEvent).FullName}' is not configured " +
+            $"for subscription queue '{subscription.QueueName}'";
+        Assert.Equal(
+            expectedMessage,
+            exception.Message);
+        errorDependencies.DelayedRetryPublisher.VerifyAll();
+        errorDependencies.DeadLetterPublisher.VerifyNoOtherCalls();
+        channel.VerifyAll();
+    }
+
+    [Fact]
     public async Task ConsumeAsync_WhenProcessingIsCancelled_NacksWithRequeueWithoutErrorStrategy()
     {
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -261,7 +316,9 @@ public sealed class RabbitMqMessageConsumerTests
             errorStrategy);
     }
 
-    private static ErrorStrategyDependencies CreateErrorStrategy(bool deadLetteringEnabled)
+    private static ErrorStrategyDependencies CreateErrorStrategy(
+        bool deadLetteringEnabled,
+        ILogger<RabbitMqConsumeErrorStrategy>? logger = null)
     {
         var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
         var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
@@ -272,7 +329,7 @@ public sealed class RabbitMqMessageConsumerTests
             {
                 DeadLetteringEnabled = deadLetteringEnabled
             }),
-            NullLogger<RabbitMqConsumeErrorStrategy>.Instance);
+            logger ?? NullLogger<RabbitMqConsumeErrorStrategy>.Instance);
 
         return new ErrorStrategyDependencies(
             strategy,
@@ -280,12 +337,19 @@ public sealed class RabbitMqMessageConsumerTests
             delayedRetryPublisher);
     }
 
-    private static RabbitMqSubscription CreateSubscription()
+    private static RabbitMqSubscription CreateSubscription(
+        Type? messageType = null)
     {
         return new RabbitMqSubscription
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
+            Bindings =
+            [
+                new RabbitMqBinding(
+                    "client-created-event",
+                    messageType ?? typeof(ClientCreatedEvent))
+            ],
             ConsumerSettings = new RabbitMqConsumerSettings(1, 1, 1)
         };
     }
