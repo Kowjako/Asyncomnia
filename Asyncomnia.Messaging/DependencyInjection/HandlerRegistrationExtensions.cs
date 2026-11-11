@@ -34,7 +34,7 @@ public static class HandlerRegistrationExtensions
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ICommandHandler<TCommand>, THandler>());
 
         builder.Services.TryAddMessageHandlerType(typeof(TCommand));
-        builder.Services.TryAddMessageDispatchDescriptor(MessageDispatchDescriptorFactory.CreateComamnd<TCommand>());
+        builder.Services.TryAddMessageDispatchDescriptor(MessageDispatchDescriptorFactory.CreateCommand<TCommand>());
         return builder;
     }
 }

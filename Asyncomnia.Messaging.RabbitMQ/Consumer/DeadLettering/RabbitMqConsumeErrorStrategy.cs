@@ -25,6 +25,7 @@ internal sealed class RabbitMqConsumeErrorStrategy(
 
     public async ValueTask<AckResponse> HandleErrorAsync(RabbitMqConsumeContext context, Exception exception, CancellationToken token = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(exception);
 
         _logger.LogError(
@@ -57,7 +58,7 @@ internal sealed class RabbitMqConsumeErrorStrategy(
         {
             _logger.LogDebug("Retry or dead-letter publishing was cancelled for queue {QueueName}. Message will be requeued", context.QueueName);
 
-            return AckResponse.NackWithoutRequeue;
+            return AckResponse.NackWithRequeue;
         }
         catch (Exception publishException)
         {

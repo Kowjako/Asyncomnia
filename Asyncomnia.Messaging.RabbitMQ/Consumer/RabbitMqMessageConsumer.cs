@@ -29,27 +29,32 @@ internal sealed class RabbitMqMessageConsumer(
 
     public async Task ConsumeAsync(IChannel channel, RabbitMqSubscription subscription, BasicDeliverEventArgs delivery, CancellationToken token)
     {
+        var context = new RabbitMqConsumeContext(
+            subscription.QueueName,
+            delivery.Exchange,
+            delivery.RoutingKey,
+            delivery.BasicProperties,
+            delivery.Body);
+
+        var response = AckResponse.Ack;
+
         try
         {
             await ProcessAsync(delivery, token);
-
-            await channel.BasicAckAsync(
-                deliveryTag: delivery.DeliveryTag,
-                multiple: false,
-                cancellationToken: token);
+            response = AckResponse.Ack;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            await channel.BasicNackAsync(
-                deliveryTag: delivery.DeliveryTag,
-                multiple: false,
-                requeue: true,
-                cancellationToken: CancellationToken.None);
+            response = AckResponse.NackWithRequeue;
         }
         catch (Exception ex)
         {
-
+            response = await _errorStrategy.HandleErrorAsync(context, ex, token);
         }
+
+        // ACK/NACK after try-catch, so if message will be handled correctly, but BasicAck will fail
+        // we will not publish message to DLQ
+        await ReturnResponseToBrokerAsync(channel, delivery.DeliveryTag, response, CancellationToken.None);
     }
 
     private async Task ProcessAsync(BasicDeliverEventArgs delivery, CancellationToken token)
@@ -73,5 +78,16 @@ internal sealed class RabbitMqMessageConsumer(
 
         var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
         await descriptor.DispatchAsync(pipeline, message, metadata, token);
+    }
+
+    private static ValueTask ReturnResponseToBrokerAsync(IChannel channel, ulong deliveryTag, AckResponse response, CancellationToken token)
+    {
+        return response switch
+        {
+            AckResponse.Ack => channel.BasicAckAsync(deliveryTag, multiple: false, token),
+            AckResponse.NackWithRequeue => channel.BasicNackAsync(deliveryTag, multiple: false, requeue: true, token),
+            AckResponse.NackWithoutRequeue => channel.BasicNackAsync(deliveryTag, multiple: false, requeue: false, token),
+            _ => throw new ArgumentOutOfRangeException(nameof(response))
+        };
     }
 }

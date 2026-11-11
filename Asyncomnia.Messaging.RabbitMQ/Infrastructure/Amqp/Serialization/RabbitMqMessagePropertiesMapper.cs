@@ -1,5 +1,4 @@
 ﻿using Asyncomnia.Messaging.Internal;
-using EasyNetQ;
 using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
@@ -59,61 +58,6 @@ internal static class RabbitMqMessagePropertiesMapper
         return new MessageMetadata(messageId, createdAt) 
         { 
             CorrelationId = correlationId 
-        };
-    }
-
-    // Tymczasowy adapter dla obecnego consumera EasyNetQ.
-    // Zmienimy parametr na IReadOnlyBasicProperties podczas
-    // migracji consumera do RabbitMQ.Client.
-    public static MessageMetadata Map(
-       in MessageProperties properties)
-    {
-        if (!Guid.TryParse(
-                properties.MessageId,
-                out var messageId) ||
-            messageId == Guid.Empty)
-        {
-            throw new InvalidOperationException(
-                $"RabbitMQ message has invalid MessageId: " +
-                $"'{properties.MessageId}'");
-        }
-
-        Guid? correlationId = null;
-
-        if (!string.IsNullOrWhiteSpace(
-                properties.CorrelationId))
-        {
-            if (!Guid.TryParse(
-                    properties.CorrelationId,
-                    out var parsedCorrelationId) ||
-                parsedCorrelationId == Guid.Empty)
-            {
-                throw new InvalidOperationException(
-                    $"RabbitMQ message has invalid CorrelationId: " +
-                    $"'{properties.CorrelationId}'");
-            }
-
-            correlationId = parsedCorrelationId;
-        }
-
-        DateTimeOffset createdAt;
-
-        try
-        {
-            createdAt = DateTimeOffset.FromUnixTimeSeconds(
-                properties.Timestamp);
-        }
-        catch (ArgumentOutOfRangeException exception)
-        {
-            throw new InvalidOperationException(
-                $"RabbitMQ message has invalid Timestamp: " +
-                $"'{properties.Timestamp}'",
-                exception);
-        }
-
-        return new MessageMetadata(messageId, createdAt)
-        {
-            CorrelationId = correlationId
         };
     }
 }

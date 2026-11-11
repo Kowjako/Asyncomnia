@@ -34,7 +34,7 @@ internal sealed class RabbitMqOutboundTransport : IOutboundTransport
         var route = _msgRouteResolver.Resolve(messageType);
 
         var body = _msgSerializer.SerializeToUtf8Bytes(message);
-        var properties = RabbitMqMessagePropertiesMapper.Map(messageType, metadata);
+        var properties = RabbitMqMessagePropertiesMapper.MapToBrokerProperties(messageType, metadata);
 
         await _exchangeCreator.EnsureDeclaredAsync(route.ExchangeName, token);
         await _rabbitMqPublisher.PublishAsync(
