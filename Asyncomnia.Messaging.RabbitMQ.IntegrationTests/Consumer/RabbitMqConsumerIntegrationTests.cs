@@ -4,9 +4,9 @@ using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Infrastructure;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.TestDoubles;
-using EasyNetQ;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Consumer;
 
@@ -111,20 +111,17 @@ public sealed class RabbitMqConsumerIntegrationTests
             Assert.Equal(@event, handledEvent.Message);
             Assert.Equal(command, handledCommand.Message);
 
-            var advancedBus = host.Services.GetRequiredService<IAdvancedBus>();
             var eventStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 $"events/clients/subscription/{endpointName}",
-                stats => stats.ConsumersCount == 1,
+                stats => stats.ConsumerCount == 1,
                 ct);
             var commandStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 $"commands/long-work-job/subscription/{endpointName}",
-                stats => stats.ConsumersCount == 1,
+                stats => stats.ConsumerCount == 1,
                 ct);
 
-            Assert.Equal((ulong)1, eventStats.ConsumersCount);
-            Assert.Equal((ulong)1, commandStats.ConsumersCount);
+            Assert.Equal((uint)1, eventStats.ConsumerCount);
+            Assert.Equal((uint)1, commandStats.ConsumerCount);
         }
         finally
         {
@@ -153,7 +150,6 @@ public sealed class RabbitMqConsumerIntegrationTests
         }
 
         await using var provider = CreatePublisherProvider();
-        var advancedBus = provider.GetRequiredService<IAdvancedBus>();
         await using var scope = provider.CreateAsyncScope();
         var publisher = scope.ServiceProvider
             .GetRequiredService<IEventPublisher>();
@@ -165,23 +161,20 @@ public sealed class RabbitMqConsumerIntegrationTests
         await publisher.PublishAsync(
             new ClientContractSignedEvent(Guid.NewGuid(), "C-001"),
             token: ct);
-        var afterUnhandled = await advancedBus.GetQueueStatsAsync(
-            queueName,
-            ct);
+        var afterUnhandled = await GetQueueStatsAsync(queueName, ct);
 
-        Assert.Equal((ulong)0, afterUnhandled.MessagesCount);
-        Assert.Equal((ulong)0, afterUnhandled.ConsumersCount);
+        Assert.Equal((uint)0, afterUnhandled.MessageCount);
+        Assert.Equal((uint)0, afterUnhandled.ConsumerCount);
 
         await publisher.PublishAsync(
             new ClientCreatedEvent(Guid.NewGuid(), "Acme"),
             token: ct);
         var afterHandled = await WaitForQueueStatsAsync(
-            advancedBus,
             queueName,
-            stats => stats.MessagesCount == 1,
+            stats => stats.MessageCount == 1,
             ct);
 
-        Assert.Equal((ulong)1, afterHandled.MessagesCount);
+        Assert.Equal((uint)1, afterHandled.MessageCount);
     }
 
     [Fact]
@@ -211,13 +204,11 @@ public sealed class RabbitMqConsumerIntegrationTests
 
         try
         {
-            var advancedBus = host.Services.GetRequiredService<IAdvancedBus>();
             var queueStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 $"commands/long-work-job/subscription/{endpointName}",
-                stats => stats.ConsumersCount == 2,
+                stats => stats.ConsumerCount == 2,
                 ct);
-            Assert.Equal((ulong)2, queueStats.ConsumersCount);
+            Assert.Equal((uint)2, queueStats.ConsumerCount);
 
             await using var scope = host.Services.CreateAsyncScope();
             var sender = scope.ServiceProvider
@@ -262,17 +253,14 @@ public sealed class RabbitMqConsumerIntegrationTests
 
         try
         {
-            var advancedBus = host.Services
-                .GetRequiredService<IAdvancedBus>();
             var deadLetterQueueName =
                 $"deadletter/events/clients/subscription/{endpointName}";
-            var initialDeadLetterStats =
-                await advancedBus.GetQueueStatsAsync(
-                    deadLetterQueueName,
-                    ct);
+            var initialDeadLetterStats = await GetQueueStatsAsync(
+                deadLetterQueueName,
+                ct);
 
-            Assert.Equal((ulong)0, initialDeadLetterStats.MessagesCount);
-            Assert.Equal((ulong)0, initialDeadLetterStats.ConsumersCount);
+            Assert.Equal((uint)0, initialDeadLetterStats.MessageCount);
+            Assert.Equal((uint)0, initialDeadLetterStats.ConsumerCount);
 
             await using var scope = host.Services.CreateAsyncScope();
             var publisher = scope.ServiceProvider
@@ -283,13 +271,12 @@ public sealed class RabbitMqConsumerIntegrationTests
                 token: ct);
 
             var deadLetterStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 deadLetterQueueName,
-                stats => stats.MessagesCount == 1,
+                stats => stats.MessageCount == 1,
                 ct);
 
-            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
-            Assert.Equal((ulong)0, deadLetterStats.ConsumersCount);
+            Assert.Equal((uint)1, deadLetterStats.MessageCount);
+            Assert.Equal((uint)0, deadLetterStats.ConsumerCount);
         }
         finally
         {
@@ -364,14 +351,12 @@ public sealed class RabbitMqConsumerIntegrationTests
 
         try
         {
-            var advancedBus = host.Services
-                .GetRequiredService<IAdvancedBus>();
             var retryQueueName = "asyncomnia/retry-100ms-queue";
-            var retryQueueStats = await advancedBus.GetQueueStatsAsync(
+            var retryQueueStats = await GetQueueStatsAsync(
                 retryQueueName,
                 ct);
-            Assert.Equal((ulong)0, retryQueueStats.MessagesCount);
-            Assert.Equal((ulong)0, retryQueueStats.ConsumersCount);
+            Assert.Equal((uint)0, retryQueueStats.MessageCount);
+            Assert.Equal((uint)0, retryQueueStats.ConsumerCount);
 
             await using var scope = host.Services.CreateAsyncScope();
             var publisher = scope.ServiceProvider
@@ -384,21 +369,19 @@ public sealed class RabbitMqConsumerIntegrationTests
             var deadLetterQueueName =
                 $"deadletter/events/clients/subscription/{endpointName}";
             var deadLetterStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 deadLetterQueueName,
-                stats => stats.MessagesCount == 1,
+                stats => stats.MessageCount == 1,
                 ct);
 
             Assert.Equal(expectedAttempts, attempts);
             Assert.Equal(expectedAttempts, probe.Attempts);
-            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
+            Assert.Equal((uint)1, deadLetterStats.MessageCount);
 
             retryQueueStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 retryQueueName,
-                stats => stats.MessagesCount == 0,
+                stats => stats.MessageCount == 0,
                 ct);
-            Assert.Equal((ulong)0, retryQueueStats.MessagesCount);
+            Assert.Equal((uint)0, retryQueueStats.MessageCount);
         }
         finally
         {
@@ -443,19 +426,16 @@ public sealed class RabbitMqConsumerIntegrationTests
                 token: ct);
 
             var attempts = await probe.WaitForExpectedAttemptsAsync(ct);
-            var advancedBus = host.Services
-                .GetRequiredService<IAdvancedBus>();
             var deadLetterQueueName =
                 $"deadletter/events/clients/subscription/{endpointName}";
             var deadLetterStats = await WaitForQueueStatsAsync(
-                advancedBus,
                 deadLetterQueueName,
-                stats => stats.MessagesCount == 1,
+                stats => stats.MessageCount == 1,
                 ct);
 
             Assert.Equal(expectedAttempts, attempts);
             Assert.Equal(expectedAttempts, probe.Attempts);
-            Assert.Equal((ulong)1, deadLetterStats.MessagesCount);
+            Assert.Equal((uint)1, deadLetterStats.MessageCount);
         }
         finally
         {
@@ -492,12 +472,29 @@ public sealed class RabbitMqConsumerIntegrationTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task<QueueStats> WaitForQueueStatsAsync(IAdvancedBus advancedBus, string queueName,
-        Func<QueueStats, bool> condition, CancellationToken ct)
+    private async Task<QueueDeclareOk> GetQueueStatsAsync(
+        string queueName,
+        CancellationToken ct)
     {
+        await using var connection = await CreateConnectionAsync(ct);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: ct);
+
+        return await channel.QueueDeclarePassiveAsync(queueName, ct);
+    }
+
+    private async Task<QueueDeclareOk> WaitForQueueStatsAsync(
+        string queueName,
+        Func<QueueDeclareOk, bool> condition,
+        CancellationToken ct)
+    {
+        await using var connection = await CreateConnectionAsync(ct);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: ct);
+
         while (true)
         {
-            var stats = await advancedBus.GetQueueStatsAsync(queueName, ct);
+            var stats = await channel.QueueDeclarePassiveAsync(queueName, ct);
 
             if (condition(stats))
             {
@@ -506,6 +503,16 @@ public sealed class RabbitMqConsumerIntegrationTests
 
             await Task.Delay(TimeSpan.FromMilliseconds(50), ct);
         }
+    }
+
+    private Task<IConnection> CreateConnectionAsync(CancellationToken ct)
+    {
+        var factory = new ConnectionFactory
+        {
+            Uri = new Uri(_connectionString)
+        };
+
+        return factory.CreateConnectionAsync(ct);
     }
 
     private static async Task StopHostAsync(IHost host)

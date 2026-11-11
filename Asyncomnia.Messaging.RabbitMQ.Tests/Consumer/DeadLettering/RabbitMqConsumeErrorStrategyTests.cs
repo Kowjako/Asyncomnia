@@ -1,11 +1,11 @@
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
-using EasyNetQ;
-using EasyNetQ.Consumer;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.DeadLettering;
 
@@ -15,23 +15,18 @@ public sealed class RabbitMqConsumeErrorStrategyTests
     public async Task HandleErrorAsync_WhenRetryIsScheduled_ReturnsAckWithoutDeadLettering()
     {
         var context = CreateContext();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var delayedRetryPublisher =
-            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
         delayedRetryPublisher
             .Setup(x => x.TryPublishAsync(context, CancellationToken.None))
             .ReturnsAsync(true);
-        var strategy = CreateStrategy(
-            deadLetterPublisher,
-            delayedRetryPublisher,
-            true);
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, true);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"));
 
-        Assert.Same(AckStrategies.AckAsync, ackStrategy);
+        Assert.Equal(AckResponse.Ack, response);
         delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyNoOtherCalls();
     }
@@ -40,23 +35,18 @@ public sealed class RabbitMqConsumeErrorStrategyTests
     public async Task HandleErrorAsync_WhenRetryPublishFails_ReturnsNackWithRequeueWithoutDeadLettering()
     {
         var context = CreateContext();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var delayedRetryPublisher =
-            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
         delayedRetryPublisher
             .Setup(x => x.TryPublishAsync(context, CancellationToken.None))
             .ThrowsAsync(new InvalidOperationException("broker unavailable"));
-        var strategy = CreateStrategy(
-            deadLetterPublisher,
-            delayedRetryPublisher,
-            true);
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, true);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"));
 
-        Assert.Same(AckStrategies.NackWithRequeueAsync, ackStrategy);
+        Assert.Equal(AckResponse.NackWithRequeue, response);
         delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyNoOtherCalls();
     }
@@ -65,43 +55,42 @@ public sealed class RabbitMqConsumeErrorStrategyTests
     public async Task HandleErrorAsync_WhenRetryIsNotScheduledAndDeadLetterPublishSucceeds_ReturnsAck()
     {
         var context = CreateContext();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var delayedRetryPublisher =
-            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
         delayedRetryPublisher
             .Setup(x => x.TryPublishAsync(context, CancellationToken.None))
             .ReturnsAsync(false);
         deadLetterPublisher
             .Setup(x => x.PublishAsync(context, CancellationToken.None))
             .Returns(Task.CompletedTask);
-        var strategy = CreateStrategy(
-            deadLetterPublisher,
-            delayedRetryPublisher,
-            true);
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, true);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"));
 
-        Assert.Same(AckStrategies.AckAsync, ackStrategy);
+        Assert.Equal(AckResponse.Ack, response);
         delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyAll();
     }
 
     [Fact]
-    public async Task HandleErrorAsync_WhenDeadLetteringIsDisabled_ReturnsNackWithoutRequeueWithoutPublishing()
+    public async Task HandleErrorAsync_WhenDeadLetteringIsDisabled_ReturnsNackWithoutRequeue()
     {
         var context = CreateContext();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var strategy = CreateStrategy(deadLetterPublisher, false);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        delayedRetryPublisher
+            .Setup(x => x.TryPublishAsync(context, CancellationToken.None))
+            .ReturnsAsync(false);
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, false);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"));
 
-        Assert.Same(AckStrategies.NackWithoutRequeueAsync, ackStrategy);
+        Assert.Equal(AckResponse.NackWithoutRequeue, response);
+        delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyNoOtherCalls();
     }
 
@@ -109,18 +98,22 @@ public sealed class RabbitMqConsumeErrorStrategyTests
     public async Task HandleErrorAsync_WhenDeadLetterPublishFails_ReturnsNackWithRequeue()
     {
         var context = CreateContext();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        delayedRetryPublisher
+            .Setup(x => x.TryPublishAsync(context, CancellationToken.None))
+            .ReturnsAsync(false);
         deadLetterPublisher
             .Setup(x => x.PublishAsync(context, CancellationToken.None))
             .ThrowsAsync(new InvalidOperationException("broker unavailable"));
-        var strategy = CreateStrategy(deadLetterPublisher, true);
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, true);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"));
 
-        Assert.Same(AckStrategies.NackWithRequeueAsync, ackStrategy);
+        Assert.Equal(AckResponse.NackWithRequeue, response);
+        delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyAll();
     }
 
@@ -130,67 +123,50 @@ public sealed class RabbitMqConsumeErrorStrategyTests
         var context = CreateContext();
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var deadLetterPublisher = new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
+        var delayedRetryPublisher = new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
+        delayedRetryPublisher
+            .Setup(x => x.TryPublishAsync(context, cancellationTokenSource.Token))
+            .ReturnsAsync(false);
         deadLetterPublisher
-            .Setup(x => x.PublishAsync(
-                context,
-                cancellationTokenSource.Token))
-            .ThrowsAsync(
-                new OperationCanceledException(
-                    cancellationTokenSource.Token));
-        var strategy = CreateStrategy(deadLetterPublisher, true);
+            .Setup(x => x.PublishAsync(context, cancellationTokenSource.Token))
+            .ThrowsAsync(new OperationCanceledException(cancellationTokenSource.Token));
+        var strategy = CreateStrategy(deadLetterPublisher, delayedRetryPublisher, true);
 
-        var ackStrategy = await strategy.HandleErrorAsync(
+        var response = await strategy.HandleErrorAsync(
             context,
             new InvalidOperationException("handler failed"),
             cancellationTokenSource.Token);
 
-        Assert.Same(AckStrategies.NackWithRequeueAsync, ackStrategy);
+        Assert.Equal(AckResponse.NackWithRequeue, response);
+        delayedRetryPublisher.VerifyAll();
         deadLetterPublisher.VerifyAll();
     }
 
     [Fact]
-    public async Task HandleCancelledAsync_ReturnsNackWithRequeueWithoutPublishing()
+    public async Task HandleErrorAsync_WhenContextIsNull_Throws()
     {
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var strategy = CreateStrategy(deadLetterPublisher, true);
+        var strategy = CreateStrategy(
+            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict),
+            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict),
+            true);
 
-        var ackStrategy = await strategy.HandleCancelledAsync(
-            CreateContext());
-
-        Assert.Same(AckStrategies.NackWithRequeueAsync, ackStrategy);
-        deadLetterPublisher.VerifyNoOtherCalls();
+        await Assert.ThrowsAsync<ArgumentNullException>(async () =>
+            await strategy.HandleErrorAsync(
+                null!,
+                new InvalidOperationException("handler failed")));
     }
 
     [Fact]
     public async Task HandleErrorAsync_WhenExceptionIsNull_Throws()
     {
-        var deadLetterPublisher =
-            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict);
-        var strategy = CreateStrategy(deadLetterPublisher, true);
+        var strategy = CreateStrategy(
+            new Mock<IRabbitMqDeadLetterPublisher>(MockBehavior.Strict),
+            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict),
+            true);
 
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
             await strategy.HandleErrorAsync(CreateContext(), null!));
-
-        deadLetterPublisher.VerifyNoOtherCalls();
-    }
-
-    private static RabbitMqConsumeErrorStrategy CreateStrategy(Mock<IRabbitMqDeadLetterPublisher> deadLetterPublisher, bool deadLetteringEnabled)
-    {
-        var delayedRetryPublisher =
-            new Mock<IRabbitMqDelayedRetryPublisher>(MockBehavior.Strict);
-        delayedRetryPublisher
-            .Setup(x => x.TryPublishAsync(
-                It.IsAny<ConsumeContext>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        return CreateStrategy(
-            deadLetterPublisher,
-            delayedRetryPublisher,
-            deadLetteringEnabled);
     }
 
     private static RabbitMqConsumeErrorStrategy CreateStrategy(
@@ -208,23 +184,16 @@ public sealed class RabbitMqConsumeErrorStrategyTests
             NullLogger<RabbitMqConsumeErrorStrategy>.Instance);
     }
 
-    private static ConsumeContext CreateContext()
+    private static RabbitMqConsumeContext CreateContext()
     {
-        var receivedInfo = new MessageReceivedInfo(
-            "consumer",
-            1,
-            false,
+        return new RabbitMqConsumeContext(
+            "events/clients/subscription/billing-service",
             "events/clients",
             "client-created-event",
-            "events/clients/subscription/billing-service");
-        var properties = new MessageProperties
-        {
-            MessageId = Guid.NewGuid().ToString("D")
-        };
-
-        ReadOnlyMemory<byte> body = new byte[] { 1, 2, 3 };
-        var services = Mock.Of<IServiceProvider>();
-
-        return new ConsumeContext(receivedInfo, properties, body, services, CancellationToken.None);
+            new BasicProperties
+            {
+                MessageId = Guid.NewGuid().ToString("D")
+            },
+            new byte[] { 1, 2, 3 });
     }
 }

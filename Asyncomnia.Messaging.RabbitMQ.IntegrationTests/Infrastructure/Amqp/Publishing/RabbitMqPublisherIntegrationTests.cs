@@ -118,7 +118,7 @@ public sealed class RabbitMqPublisherIntegrationTests(
             noWait: false,
             cancellationToken: token);
 
-        await Assert.ThrowsAsync<PublishException>(
+        await Assert.ThrowsAnyAsync<PublishException>(
             () => publisher.PublishAsync(
                 exchangeName,
                 "missing-binding",

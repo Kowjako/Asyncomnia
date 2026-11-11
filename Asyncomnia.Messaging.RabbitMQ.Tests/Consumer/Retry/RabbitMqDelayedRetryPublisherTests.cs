@@ -1,10 +1,11 @@
 using System.Text;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
-using EasyNetQ;
-using EasyNetQ.Consumer;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Microsoft.Extensions.Options;
 using Moq;
+using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer.Retry;
 
@@ -13,9 +14,9 @@ public sealed class RabbitMqDelayedRetryPublisherTests
     [Fact]
     public async Task TryPublishAsync_WhenBrokerRetriesAreDisabled_ReturnsFalseWithoutPublishing()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = false
@@ -24,20 +25,19 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         var published = await publisher.TryPublishAsync(CreateContext());
 
         Assert.False(published);
-        advancedBus.VerifyNoOtherCalls();
+        brokerPublisher.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task TryPublishAsync_ForFirstRetry_PublishesOriginalMessageWithIncrementedHeader()
     {
         const string retryHeader = "x-asyncomnia-broker-retry";
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
-        var expiration = TimeSpan.FromMinutes(10);
-        var properties = new MessageProperties
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
+        var properties = new BasicProperties
         {
             MessageId = Guid.NewGuid().ToString("D"),
-            Expiration = expiration,
-            Headers = new Dictionary<string, object>
+            Expiration = "600000",
+            Headers = new Dictionary<string, object?>
             {
                 ["custom-header"] = "custom-value"
             }
@@ -45,22 +45,21 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         ReadOnlyMemory<byte> body = new byte[] { 1, 2, 3 };
         var context = CreateContext(properties, body);
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = true,
                 BrokerRetryDelays = [TimeSpan.FromSeconds(30)]
             });
-        advancedBus
+        brokerPublisher
             .Setup(x => x.PublishAsync(
                 "asyncomnia/retry-30000ms",
                 "events/clients/subscription/billing-service",
                 true,
-                true,
-                It.Is<MessageProperties>(publishedProperties =>
+                It.Is<BasicProperties>(publishedProperties =>
                     publishedProperties.MessageId == properties.MessageId &&
                     publishedProperties.Expiration == null &&
-                    (int)publishedProperties.Headers[retryHeader] == 1 &&
+                    (int)publishedProperties.Headers![retryHeader] == 1 &&
                     (string)publishedProperties.Headers["custom-header"] == "custom-value"),
                 It.Is<ReadOnlyMemory<byte>>(publishedBody => publishedBody.Equals(body)),
                 CancellationToken.None))
@@ -69,26 +68,26 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         var published = await publisher.TryPublishAsync(context);
 
         Assert.True(published);
-        Assert.Equal(expiration, context.Properties.Expiration);
-        Assert.False(context.Properties.Headers.ContainsKey(retryHeader));
-        advancedBus.VerifyAll();
+        Assert.Equal("600000", context.Properties.Expiration);
+        Assert.False(context.Properties.Headers!.ContainsKey(retryHeader));
+        brokerPublisher.VerifyAll();
     }
 
     [Fact]
     public async Task TryPublishAsync_WithRepeatedDelay_UsesTheSameRetryExchangeForTheNextStage()
     {
         const string retryHeader = "x-asyncomnia-broker-retry";
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var context = CreateContext(
-            new MessageProperties
+            new BasicProperties
             {
-                Headers = new Dictionary<string, object>
+                Headers = new Dictionary<string, object?>
                 {
                     [retryHeader] = 1
                 }
             });
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = true,
@@ -98,14 +97,12 @@ public sealed class RabbitMqDelayedRetryPublisherTests
                     TimeSpan.FromSeconds(30)
                 ]
             });
-        advancedBus
+        brokerPublisher
             .Setup(x => x.PublishAsync(
                 "asyncomnia/retry-30000ms",
                 "events/clients/subscription/billing-service",
                 true,
-                true,
-                It.Is<MessageProperties>(properties =>
-                    (int)properties.Headers[retryHeader] == 2),
+                It.Is<BasicProperties>(properties =>(int)properties.Headers![retryHeader] == 2),
                 It.IsAny<ReadOnlyMemory<byte>>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -113,24 +110,24 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         var published = await publisher.TryPublishAsync(context);
 
         Assert.True(published);
-        advancedBus.VerifyAll();
+        brokerPublisher.VerifyAll();
     }
 
     [Fact]
     public async Task TryPublishAsync_WithUtf8RetryHeader_SelectsTheNextRetryStage()
     {
         const string retryHeader = "x-asyncomnia-broker-retry";
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var context = CreateContext(
-            new MessageProperties
+            new BasicProperties
             {
-                Headers = new Dictionary<string, object>
+                Headers = new Dictionary<string, object?>
                 {
                     [retryHeader] = Encoding.UTF8.GetBytes("1")
                 }
             });
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = true,
@@ -140,14 +137,13 @@ public sealed class RabbitMqDelayedRetryPublisherTests
                     TimeSpan.FromMinutes(1)
                 ]
             });
-        advancedBus
+        brokerPublisher
             .Setup(x => x.PublishAsync(
                 "asyncomnia/retry-60000ms",
                 "events/clients/subscription/billing-service",
                 true,
-                true,
-                It.Is<MessageProperties>(properties =>
-                    (int)properties.Headers[retryHeader] == 2),
+                It.Is<BasicProperties>(properties =>
+                    (int)properties.Headers![retryHeader] == 2),
                 It.IsAny<ReadOnlyMemory<byte>>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -155,23 +151,23 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         var published = await publisher.TryPublishAsync(context);
 
         Assert.True(published);
-        advancedBus.VerifyAll();
+        brokerPublisher.VerifyAll();
     }
 
     [Fact]
     public async Task TryPublishAsync_WhenAllRetriesAreExhausted_ReturnsFalseWithoutPublishing()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var context = CreateContext(
-            new MessageProperties
+            new BasicProperties
             {
-                Headers = new Dictionary<string, object>
+                Headers = new Dictionary<string, object?>
                 {
                     ["x-asyncomnia-broker-retry"] = 2
                 }
             });
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = true,
@@ -185,29 +181,28 @@ public sealed class RabbitMqDelayedRetryPublisherTests
         var published = await publisher.TryPublishAsync(context);
 
         Assert.False(published);
-        advancedBus.VerifyNoOtherCalls();
+        brokerPublisher.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task TryPublishAsync_WhenPublishFails_PropagatesException()
     {
-        var advancedBus = new Mock<IAdvancedBus>(MockBehavior.Strict);
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
         var publishException = new InvalidOperationException("broker unavailable");
         var context = CreateContext();
         var publisher = CreatePublisher(
-            advancedBus,
+            brokerPublisher,
             new RabbitMqConsumerOptions
             {
                 BrokerRetriesEnabled = true,
                 BrokerRetryDelays = [TimeSpan.FromSeconds(30)]
             });
-        advancedBus
+        brokerPublisher
             .Setup(x => x.PublishAsync(
                 "asyncomnia/retry-30000ms",
                 "events/clients/subscription/billing-service",
                 true,
-                true,
-                It.IsAny<MessageProperties>(),
+                It.IsAny<BasicProperties>(),
                 It.IsAny<ReadOnlyMemory<byte>>(),
                 CancellationToken.None))
             .ThrowsAsync(publishException);
@@ -216,31 +211,41 @@ public sealed class RabbitMqDelayedRetryPublisherTests
             () => publisher.TryPublishAsync(context));
 
         Assert.Same(publishException, exception);
-        advancedBus.VerifyAll();
+        brokerPublisher.VerifyAll();
     }
 
-    private static RabbitMqDelayedRetryPublisher CreatePublisher(Mock<IAdvancedBus> advancedBus, RabbitMqConsumerOptions options)
+    [Fact]
+    public async Task TryPublishAsync_WhenContextIsNull_Throws()
+    {
+        var brokerPublisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
+        var publisher = CreatePublisher(
+            brokerPublisher,
+            new RabbitMqConsumerOptions());
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => publisher.TryPublishAsync(null!));
+
+        brokerPublisher.VerifyNoOtherCalls();
+    }
+
+    private static RabbitMqDelayedRetryPublisher CreatePublisher(
+        Mock<IRabbitMqPublisher> brokerPublisher,
+        RabbitMqConsumerOptions options)
     {
         return new RabbitMqDelayedRetryPublisher(
-            advancedBus.Object,
+            brokerPublisher.Object,
             Options.Create(options));
     }
 
-    private static ConsumeContext CreateContext(MessageProperties? properties = null, ReadOnlyMemory<byte>? body = null)
+    private static RabbitMqConsumeContext CreateContext(
+        IReadOnlyBasicProperties? properties = null,
+        ReadOnlyMemory<byte>? body = null)
     {
-        var receivedInfo = new MessageReceivedInfo(
-            "consumer",
-            1,
-            false,
+        return new RabbitMqConsumeContext(
+            "events/clients/subscription/billing-service",
             "events/clients",
             "client-created-event",
-            "events/clients/subscription/billing-service");
-
-        return new ConsumeContext(
-            receivedInfo,
-            properties ?? new MessageProperties(),
-            body ?? new ReadOnlyMemory<byte>(new byte[] { 1, 2, 3 }),
-            Mock.Of<IServiceProvider>(),
-            CancellationToken.None);
+            properties ?? new BasicProperties(),
+            body ?? new ReadOnlyMemory<byte>(new byte[] { 1, 2, 3 }));
     }
 }

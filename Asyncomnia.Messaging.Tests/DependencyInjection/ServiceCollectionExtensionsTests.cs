@@ -118,6 +118,20 @@ public sealed class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddAsyncomniaMessaging_RegistersMessageDispatchCatalogAsSingleton()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging();
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(IMessageDispatchCatalog));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(typeof(MessageDispatchCatalog), registration.ImplementationType);
+    }
+
+    [Fact]
     public void AddAsyncomniaMessaging_CanResolveDispatcherWithoutLoggingRegistration()
     {
         var services = new ServiceCollection();

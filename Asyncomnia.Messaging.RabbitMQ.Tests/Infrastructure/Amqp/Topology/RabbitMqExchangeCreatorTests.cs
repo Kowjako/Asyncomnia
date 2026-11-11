@@ -296,7 +296,7 @@ public sealed class RabbitMqExchangeCreatorTests
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var creator = new RabbitMqExchangeCreator(channelFactory.Object);
 
-        await Assert.ThrowsAsync<ArgumentException>(
+        await Assert.ThrowsAnyAsync<ArgumentException>(
             () => creator.EnsureDeclaredAsync(exchangeName!));
 
         channelFactory.VerifyNoOtherCalls();
