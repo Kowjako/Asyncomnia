@@ -40,7 +40,7 @@ public sealed class DapperOutboxBuilderExtensionsTests
 
         var registration = Assert.Single(
             services,
-            descriptor => descriptor.ServiceType == typeof(IOutboxTransactionAccessor));
+            descriptor => descriptor.ServiceType == typeof(IDbTransactionAccessor));
         Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
         Assert.NotNull(registration.ImplementationFactory);
     }
@@ -74,7 +74,7 @@ public sealed class DapperOutboxBuilderExtensionsTests
         using var scope = provider.CreateScope();
 
         var unitOfWork = scope.ServiceProvider.GetRequiredService<ITestUnitOfWork>();
-        var transactionAccessor = scope.ServiceProvider.GetRequiredService<IOutboxTransactionAccessor>();
+        var transactionAccessor = scope.ServiceProvider.GetRequiredService<IDbTransactionAccessor>();
 
         Assert.Same(unitOfWork, transactionAccessor);
     }

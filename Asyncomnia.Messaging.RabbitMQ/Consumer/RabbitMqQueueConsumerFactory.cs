@@ -24,7 +24,13 @@ internal sealed class RabbitMqQueueConsumerFactory(IRabbitMqChannelFactory chann
         token.ThrowIfCancellationRequested();
 
         // Single channel per single consumer,
-        // running multiple consumers over single channel its antipattern
+        // running multiple consumers over single channel its antipattern.
+        // RabbitMQ Channel is not thread-safe, so if multiple consumers (AsyncEventingBasicConsumer for example)
+        // will try at the same time send Ack/Nack it can end up with I/O Exception or TCP buffet exceptions
+        // Also during consuming message if we want to publish we need to do this over new channel
+        // (or rented from publisher channel pool). It means we cannot consume and publish via the same channel
+        // if we want safe code and avoid IO/TCP Exceptions.
+        // Gold statement: 1 consumer / 1 listening loop = 1 separate Channel
         var channel = await _channelFactory.CreateAsync(CreateConsumerChannelOptions(subscription), token);
 
         try

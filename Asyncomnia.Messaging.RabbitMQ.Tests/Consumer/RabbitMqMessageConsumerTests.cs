@@ -66,6 +66,68 @@ public sealed class RabbitMqMessageConsumerTests
     }
 
     [Fact]
+    public async Task ConsumeAsync_WhenMessageIsValid_PassesInboundContextToProcessorAndAcknowledgesMessage()
+    {
+        var messageId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(
+            2026,
+            11,
+            7,
+            15,
+            30,
+            0,
+            TimeSpan.Zero);
+        var message = new ClientCreatedEvent("Acme");
+        InboundMessageContext? capturedContext = null;
+        var processor =
+            new Mock<IInboundMessageProcessor>(MockBehavior.Strict);
+        processor
+            .Setup(x => x.ProcessAsync(
+                It.IsAny<InboundMessageContext>(),
+                CancellationToken.None))
+            .Callback<InboundMessageContext, CancellationToken>(
+                (context, _) => capturedContext = context)
+            .Returns(Task.CompletedTask);
+        await using var provider = CreateProvider(processor.Object);
+        var errorDependencies = CreateErrorStrategy(
+            deadLetteringEnabled: false);
+        var consumer = CreateConsumer(
+            provider,
+            errorDependencies.Strategy);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicAckAsync(
+                1,
+                false,
+                CancellationToken.None))
+            .Returns(ValueTask.CompletedTask);
+        var subscription = CreateSubscription();
+        var delivery = CreateDelivery(
+            message,
+            new MessageMetadata(messageId, createdAt));
+
+        await consumer.ConsumeAsync(
+            channel.Object,
+            subscription,
+            delivery,
+            CancellationToken.None);
+
+        Assert.NotNull(capturedContext);
+        Assert.Equal(
+            subscription.QueueName,
+            capturedContext.ConsumerId);
+        Assert.Equal(
+            delivery.BasicProperties.Type,
+            capturedContext.ContractType);
+        Assert.Equal(message, capturedContext.Message);
+        Assert.Equal(messageId, capturedContext.Metadata.MessageId);
+        Assert.Equal(createdAt, capturedContext.Metadata.CreatedAt);
+        processor.VerifyAll();
+        channel.VerifyAll();
+        errorDependencies.VerifyNoCalls();
+    }
+
+    [Fact]
     public async Task ConsumeAsync_WhenPipelineThrows_DisposesScopeAndNacksWithoutRequeue()
     {
         var expectedException = new InvalidOperationException("handler failed");
@@ -296,7 +358,23 @@ public sealed class RabbitMqMessageConsumerTests
         Func<IServiceProvider, IInboundMessagePipeline> pipelineFactory)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IMessageDispatchCatalog>(
+            CreateDispatchCatalog());
         services.AddScoped<IInboundMessagePipeline>(pipelineFactory);
+        services.AddScoped<
+            IInboundMessageProcessor,
+            InboundMessageProcessor>();
+        return services.BuildServiceProvider();
+    }
+
+    private static ServiceProvider CreateProvider(
+        IInboundMessageProcessor processor)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IMessageDispatchCatalog>(
+            CreateDispatchCatalog());
+        services.AddScoped<IInboundMessageProcessor>(
+            _ => processor);
         return services.BuildServiceProvider();
     }
 
@@ -304,16 +382,20 @@ public sealed class RabbitMqMessageConsumerTests
         ServiceProvider provider,
         RabbitMqConsumeErrorStrategy errorStrategy)
     {
-        var catalog = new MessageDispatchCatalog(
-        [
-            MessageDispatchDescriptorFactory.CreateEvent<ClientCreatedEvent>()
-        ]);
-
         return new RabbitMqMessageConsumer(
             provider.GetRequiredService<IServiceScopeFactory>(),
             new MessageJsonSerializer(),
-            catalog,
+            provider.GetRequiredService<IMessageDispatchCatalog>(),
             errorStrategy);
+    }
+
+    private static MessageDispatchCatalog CreateDispatchCatalog()
+    {
+        return new MessageDispatchCatalog(
+        [
+            MessageDispatchDescriptorFactory
+                .CreateEvent<ClientCreatedEvent>()
+        ]);
     }
 
     private static ErrorStrategyDependencies CreateErrorStrategy(

@@ -20,7 +20,7 @@ public static class DapperOutboxBuilderExtensions
     /// </summary>
     /// <typeparam name="TTransactionAccessor">
     /// The registered unit of work or transaction accessor that exposes the current
-    /// database transaction, if any, through <see cref="IOutboxTransactionAccessor"/>.
+    /// database transaction, if any, through <see cref="IDbTransactionAccessor"/>.
     /// </typeparam>
     /// <param name="builder">
     /// The Outbox builder being configured.
@@ -30,7 +30,7 @@ public static class DapperOutboxBuilderExtensions
     /// </returns>
     /// <example>
     /// <code><![CDATA[
-    /// public interface IApplicationUnitOfWork : IOutboxTransactionAccessor
+    /// public interface IApplicationUnitOfWork : IDbTransactionAccessor
     /// {
     ///     Task BeginAsync(CancellationToken token = default);
     ///     Task CommitAsync(CancellationToken token = default);
@@ -50,11 +50,11 @@ public static class DapperOutboxBuilderExtensions
     ///     });
     /// ]]></code>
     /// </example>
-    public static OutboxBuilder UseDapper<TTransactionAccessor>(this OutboxBuilder builder) where TTransactionAccessor : class, IOutboxTransactionAccessor
+    public static OutboxBuilder UseDapper<TTransactionAccessor>(this OutboxBuilder builder) where TTransactionAccessor : class, IDbTransactionAccessor
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.TryAddScoped<IOutboxTransactionAccessor>(_ => _.GetRequiredService<TTransactionAccessor>());
+        builder.Services.TryAddScoped<IDbTransactionAccessor>(_ => _.GetRequiredService<TTransactionAccessor>());
         builder.Services.TryAddScoped<IOutboxWriter, DapperOutboxWriter>();
 
         return builder;

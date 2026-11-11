@@ -9,10 +9,10 @@ using Microsoft.Extensions.Options;
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Outbox;
 
 internal sealed class DapperOutboxWriter(
-    IOutboxTransactionAccessor transactionAccessor,
+    IDbTransactionAccessor transactionAccessor,
     IOptions<SqlServerOutboxOptions> options) : IOutboxWriter
 {
-    private readonly IOutboxTransactionAccessor _transactionAccessor = transactionAccessor
+    private readonly IDbTransactionAccessor _transactionAccessor = transactionAccessor
         ?? throw new ArgumentNullException(nameof(transactionAccessor));
 
     private readonly string _connectionString = options?.Value.ConnectionString

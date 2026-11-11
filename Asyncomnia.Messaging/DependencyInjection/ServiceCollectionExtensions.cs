@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
 
         services.TryAddScoped<IMessageHandlerDispatcher, MessageHandlerDispatcher>();
         services.TryAddScoped<IInboundMessagePipeline, HandlerMessagePipeline>();
+        services.TryAddScoped<IInboundMessageProcessor, InboundMessageProcessor>();
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<MessageEnvelopeFactory>();
