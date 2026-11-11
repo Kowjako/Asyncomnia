@@ -3,7 +3,7 @@ using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 
-internal sealed class RabbitMqChannelPoolSlot : IAsyncDisposable
+internal sealed class RabbitMqChannelPoolSlot : IDisposable, IAsyncDisposable
 {
     private static readonly CreateChannelOptions ChannelOptions = new(
         publisherConfirmationsEnabled: true,
@@ -70,28 +70,58 @@ internal sealed class RabbitMqChannelPoolSlot : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _channelLock.WaitAsync();
+        await _channelLock.WaitAsync().ConfigureAwait(false);
 
         try
         {
-            if (_disposed)
+            if (!TryBeginDispose(out var channel))
             {
                 return;
             }
 
-            _disposed = true;
-
-            var channel = _channel;
-            _channel = null;
-
             if (channel is not null)
             {
-                await channel.DisposeAsync();
+                await channel.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
         {
             _channelLock.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        _channelLock.Wait();
+
+        try
+        {
+            if (!TryBeginDispose(out var channel))
+            {
+                return;
+            }
+
+            channel?.Dispose();
+        }
+        finally
+        {
+            _channelLock.Release();
+        }
+    }
+
+    private bool TryBeginDispose(out IChannel? channel)
+    {
+        if (_disposed)
+        {
+            channel = null;
+            return false;
+        }
+
+        _disposed = true;
+
+        channel = _channel;
+        _channel = null;
+
+        return true;
     }
 }

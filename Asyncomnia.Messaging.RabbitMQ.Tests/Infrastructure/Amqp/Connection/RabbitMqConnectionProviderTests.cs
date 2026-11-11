@@ -7,6 +7,16 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Infrastructure.Amqp.Connection;
 public sealed class RabbitMqConnectionProviderTests
 {
     [Fact]
+    public async Task Dispose_WhenConnectionWasNotCreated_CanBeCalledMoreThanOnceAndBeforeDisposeAsync()
+    {
+        var provider = CreateProvider();
+
+        provider.Dispose();
+        provider.Dispose();
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
     public async Task DisposeAsync_WhenConnectionWasNotCreated_CanBeCalledMoreThanOnce()
     {
         var provider = CreateProvider();
@@ -20,6 +30,16 @@ public sealed class RabbitMqConnectionProviderTests
     {
         var provider = CreateProvider();
         await provider.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            async () => await provider.GetConnectionAsync());
+    }
+
+    [Fact]
+    public async Task GetConnectionAsync_AfterProviderWasDisposedSynchronously_Throws()
+    {
+        var provider = CreateProvider();
+        provider.Dispose();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
             async () => await provider.GetConnectionAsync());

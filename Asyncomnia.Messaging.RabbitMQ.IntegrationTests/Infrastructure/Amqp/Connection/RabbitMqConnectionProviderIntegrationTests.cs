@@ -63,6 +63,24 @@ public sealed class RabbitMqConnectionProviderIntegrationTests(
             async () => await provider.GetConnectionAsync());
     }
 
+    [Fact]
+    public async Task Dispose_ClosesConnectionAndRejectsFurtherAccess()
+    {
+        var provider = CreateProvider();
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var connection = await provider.GetConnectionAsync(
+            cancellationTokenSource.Token);
+
+        provider.Dispose();
+        provider.Dispose();
+        await provider.DisposeAsync();
+
+        Assert.False(connection.IsOpen);
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            async () => await provider.GetConnectionAsync());
+    }
+
     private RabbitMqConnectionProvider CreateProvider()
     {
         return new RabbitMqConnectionProvider(

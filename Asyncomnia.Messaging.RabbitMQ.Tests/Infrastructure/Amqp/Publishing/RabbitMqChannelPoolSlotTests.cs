@@ -242,12 +242,162 @@ public sealed class RabbitMqChannelPoolSlotTests
     }
 
     [Fact]
+    public async Task Dispose_WhenChannelWasCreated_DisposesSynchronouslyAndRemainsIdempotent()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var properties = new BasicProperties();
+        ReadOnlyMemory<byte> body = new byte[] { 1 };
+        SetupChannelCreation(channelFactory, channel);
+        SetupPublication(
+            channel,
+            "events/clients",
+            "client-created-event",
+            false,
+            properties,
+            body);
+        channel
+            .Setup(x => x.Dispose());
+        var slot = new RabbitMqChannelPoolSlot(channelFactory.Object);
+        await slot.PublishAsync(
+            "events/clients",
+            "client-created-event",
+            false,
+            properties,
+            body,
+            CancellationToken.None);
+
+        slot.Dispose();
+        slot.Dispose();
+        await slot.DisposeAsync();
+
+        channel.Verify(
+            x => x.Dispose(),
+            Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Dispose_WhenPublicationIsRunning_WaitsAndThenDisposesChannel()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var publicationStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePublication = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var properties = new BasicProperties();
+        ReadOnlyMemory<byte> body = new byte[] { 1 };
+        SetupChannelCreation(channelFactory, channel);
+        channel
+            .Setup(x => x.BasicPublishAsync(
+                "events/clients",
+                "client-created-event",
+                false,
+                properties,
+                body,
+                CancellationToken.None))
+            .Returns(() =>
+            {
+                publicationStarted.TrySetResult();
+                return new ValueTask(releasePublication.Task);
+            });
+        channel
+            .Setup(x => x.Dispose());
+        var slot = new RabbitMqChannelPoolSlot(channelFactory.Object);
+        var publication = slot.PublishAsync(
+            "events/clients",
+            "client-created-event",
+            false,
+            properties,
+            body,
+            CancellationToken.None);
+        await publicationStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(5));
+
+        var disposal = Task.Run(slot.Dispose);
+
+        Assert.False(disposal.IsCompleted);
+
+        releasePublication.TrySetResult();
+        await publication;
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+
+        channel.Verify(
+            x => x.Dispose(),
+            Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Dispose_AfterDisposeAsync_DoesNotDisposeChannelAgain()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var properties = new BasicProperties();
+        ReadOnlyMemory<byte> body = new byte[] { 1 };
+        SetupChannelCreation(channelFactory, channel);
+        SetupPublication(
+            channel,
+            "events/clients",
+            "client-created-event",
+            false,
+            properties,
+            body);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        var slot = new RabbitMqChannelPoolSlot(channelFactory.Object);
+        await slot.PublishAsync(
+            "events/clients",
+            "client-created-event",
+            false,
+            properties,
+            body,
+            CancellationToken.None);
+
+        await slot.DisposeAsync();
+        slot.Dispose();
+
+        channel.Verify(
+            x => x.DisposeAsync(),
+            Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
     public async Task PublishAsync_AfterSlotWasDisposed_ThrowsWithoutCreatingChannel()
     {
         var channelFactory =
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var slot = new RabbitMqChannelPoolSlot(channelFactory.Object);
         await slot.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => slot.PublishAsync(
+                "events/clients",
+                "client-created-event",
+                false,
+                new BasicProperties(),
+                ReadOnlyMemory<byte>.Empty,
+                CancellationToken.None));
+
+        channelFactory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task PublishAsync_AfterSlotWasDisposedSynchronously_ThrowsWithoutCreatingChannel()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var slot = new RabbitMqChannelPoolSlot(channelFactory.Object);
+        slot.Dispose();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => slot.PublishAsync(

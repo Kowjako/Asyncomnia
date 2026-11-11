@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 
-internal interface IRabbitMqChannelPool : IAsyncDisposable
+internal interface IRabbitMqChannelPool : IDisposable, IAsyncDisposable
 {
     ValueTask<RabbitMqChannelPoolSlot> RentAsync(CancellationToken token = default);
 
@@ -73,15 +73,12 @@ internal sealed class RabbitMqChannelPool : IRabbitMqChannelPool
 
     public async ValueTask DisposeAsync()
     {
-        // Change state from 0 to 1 atomically. If we did this as first, then close writer
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (!TryBeginDispose())
         {
             return;
         }
 
-        _availableSlots.Writer.TryComplete();
-
-        await Task.WhenAll(_slots.Select(slot => slot.DisposeAsync().AsTask()));
+        await Task.WhenAll(_slots.Select(slot => slot.DisposeAsync().AsTask())).ConfigureAwait(false);
     }
 
     private void ThrowIfDisposed()
@@ -93,5 +90,31 @@ internal sealed class RabbitMqChannelPool : IRabbitMqChannelPool
     {
         // Reading with memory guarantee, without blocking a thread
         return Volatile.Read(ref _disposed) != 0;
+    }
+
+    private bool TryBeginDispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return false;
+        }
+
+        // Drop waiting RentAsync and prevent next renting.
+        _availableSlots.Writer.TryComplete();
+
+        return true;
+    }
+
+    public void Dispose()
+    {
+        if (!TryBeginDispose())
+        {
+            return;
+        }
+
+        foreach (var slot in _slots)
+        {
+            slot.Dispose();
+        }
     }
 }

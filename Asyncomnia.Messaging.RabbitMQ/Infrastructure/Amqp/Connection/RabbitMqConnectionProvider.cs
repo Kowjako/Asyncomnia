@@ -9,7 +9,8 @@ internal interface IRabbitMqConnectionProvider
     ValueTask<IConnection> GetConnectionAsync(CancellationToken token = default);
 }
 
-internal sealed class RabbitMqConnectionProvider(IOptions<RabbitMqOptions> options) : IRabbitMqConnectionProvider, IAsyncDisposable
+internal sealed class RabbitMqConnectionProvider(IOptions<RabbitMqOptions> options)
+    : IRabbitMqConnectionProvider, IDisposable, IAsyncDisposable
 {
     private readonly RabbitMqOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
@@ -59,30 +60,58 @@ internal sealed class RabbitMqConnectionProvider(IOptions<RabbitMqOptions> optio
 
     public async ValueTask DisposeAsync()
     {
-        // Use the same lock as connection initialization so the connection cannot
-        // be created and disposed concurrently.
-        await _connectionLock.WaitAsync();
+        await _connectionLock.WaitAsync().ConfigureAwait(false);
 
         try
         {
-            if (_disposed)
+            if (!TryBeginDispose(out var connection))
             {
                 return;
             }
 
-            _disposed = true;
-
-            var connection = _connection;
-            _connection = null;
-
             if (connection is not null)
             {
-                await connection.DisposeAsync();
+                await connection.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
         {
             _connectionLock.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        _connectionLock.Wait();
+
+        try
+        {
+            if (!TryBeginDispose(out var connection))
+            {
+                return;
+            }
+
+            connection?.Dispose();
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
+    }
+
+    private bool TryBeginDispose(out IConnection? connection)
+    {
+        if (_disposed)
+        {
+            connection = null;
+            return false;
+        }
+
+        _disposed = true;
+
+        connection = _connection;
+        _connection = null;
+
+        return true;
     }
 }

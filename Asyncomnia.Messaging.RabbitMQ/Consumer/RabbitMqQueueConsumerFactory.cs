@@ -23,6 +23,8 @@ internal sealed class RabbitMqQueueConsumerFactory(IRabbitMqChannelFactory chann
         ArgumentNullException.ThrowIfNull(subscription);
         token.ThrowIfCancellationRequested();
 
+        // Single channel per single consumer,
+        // running multiple consumers over single channel its antipattern
         var channel = await _channelFactory.CreateAsync(CreateConsumerChannelOptions(subscription), token);
 
         try

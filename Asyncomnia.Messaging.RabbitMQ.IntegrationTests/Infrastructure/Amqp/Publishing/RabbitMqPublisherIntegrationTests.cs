@@ -128,6 +128,55 @@ public sealed class RabbitMqPublisherIntegrationTests(
                 token));
     }
 
+    [Fact]
+    public async Task ChannelPoolDispose_AfterPublishing_RejectsFurtherPoolAndSlotUsage()
+    {
+        var options = CreateOptions();
+        await using var connectionProvider =
+            new RabbitMqConnectionProvider(options);
+        var channelFactory =
+            new RabbitMqChannelFactory(connectionProvider);
+        var channelPool =
+            new RabbitMqChannelPool(channelFactory, options);
+        await using var topologyChannel =
+            await channelFactory.CreateAsync();
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = cancellationTokenSource.Token;
+        var queue = await topologyChannel.QueueDeclareAsync(
+            queue: string.Empty,
+            durable: false,
+            exclusive: true,
+            autoDelete: true,
+            arguments: null,
+            passive: false,
+            noWait: false,
+            cancellationToken: token);
+        var slot = await channelPool.RentAsync(token);
+        await slot.PublishAsync(
+            exchange: string.Empty,
+            routingKey: queue.QueueName,
+            mandatory: true,
+            properties: new BasicProperties(),
+            body: ReadOnlyMemory<byte>.Empty,
+            token);
+        channelPool.Return(slot);
+
+        channelPool.Dispose();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            async () => await channelPool.RentAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => slot.PublishAsync(
+                exchange: string.Empty,
+                routingKey: queue.QueueName,
+                mandatory: true,
+                properties: new BasicProperties(),
+                body: ReadOnlyMemory<byte>.Empty,
+                token));
+        await channelPool.DisposeAsync();
+    }
+
     private IOptions<RabbitMqOptions> CreateOptions()
     {
         return Options.Create(

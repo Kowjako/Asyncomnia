@@ -2,12 +2,14 @@
 
 public sealed class RabbitMqConsumerOptions
 {
-    private readonly Dictionary<string, RabbitMqSubscriptionConsumerOptions> _subscriptions  = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RabbitMqSubscriptionConsumerOptions> _subscriptions = new(StringComparer.Ordinal);
 
     public string EndpointName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Number of consumers(channel) per queue/subscription (used for competing consumers pattern)
+    /// Number of consumers (channels) per queue/subscription (used for competing consumers pattern)
+    /// This setting applies globally to all consumers
+    /// If you want to configure number of consumers per topic, use ConfigureSubscription method.
     /// </summary>
     public int DefaultConsumerCount { get; set; } = 1;
 
@@ -17,7 +19,7 @@ public sealed class RabbitMqConsumerOptions
     public ushort DefaultPrefetchCount { get; set; } = 1;
 
     /// <summary>
-    /// Maximum number of messages processed concurrently by a single consumer
+    /// Maximum number of messages processed concurrently by a single consumer (channel)
     /// </summary>
     public ushort DefaultDispatcherConcurrency { get; set; } = 1;
 

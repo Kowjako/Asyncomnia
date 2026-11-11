@@ -113,6 +113,36 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseRabbitMq_WhenConnectionProviderIsResolved_AllowsSynchronousServiceProviderDisposal()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+        var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRabbitMqConnectionProvider>();
+
+        var exception = Record.Exception(provider.Dispose);
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void UseRabbitMq_WhenChannelPoolIsResolved_AllowsSynchronousServiceProviderDisposal()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+        var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IRabbitMqChannelPool>();
+
+        var exception = Record.Exception(provider.Dispose);
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void UseRabbitMq_RegistersExchangeCreatorAsSingleton()
     {
         var services = new ServiceCollection();
