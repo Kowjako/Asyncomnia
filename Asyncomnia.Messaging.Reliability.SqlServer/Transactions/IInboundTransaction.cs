@@ -1,6 +1,6 @@
-﻿using Asyncomnia.Messaging.Reliability.Inbox;
+using Asyncomnia.Messaging.Reliability.Inbox;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Transactions;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 
 /// <summary>
 /// Controls the database transaction used while processing an inbound message.

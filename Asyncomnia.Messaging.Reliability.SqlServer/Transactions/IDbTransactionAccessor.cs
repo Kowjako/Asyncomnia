@@ -1,6 +1,6 @@
-﻿using System.Data;
+using System.Data;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Transactions;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 
 /// <summary>
 /// Exposes the database transaction that messaging persistence operations

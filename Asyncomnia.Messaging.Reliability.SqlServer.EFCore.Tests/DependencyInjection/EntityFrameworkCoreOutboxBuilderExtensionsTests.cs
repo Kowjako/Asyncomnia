@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests.TestDoubles;
@@ -35,6 +36,48 @@ public sealed class EntityFrameworkCoreOutboxBuilderExtensionsTests
         {
             outbox.UseEntityFrameworkCore<TestDbContext>();
             outbox.UseEntityFrameworkCore<TestDbContext>();
+        });
+
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IOutboxWriter));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(
+            typeof(EntityFrameworkCoreOutboxWriter<TestDbContext>),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseEntityFrameworkCore_AfterUseSqlServer_ReplacesDefaultSqlServerWriter()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging().UseOutbox(outbox =>
+        {
+            outbox.UseSqlServer(options =>
+                options.ConnectionString = "test-connection-string");
+            outbox.UseEntityFrameworkCore<TestDbContext>();
+        });
+
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IOutboxWriter));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(
+            typeof(EntityFrameworkCoreOutboxWriter<TestDbContext>),
+            registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseSqlServer_AfterUseEntityFrameworkCore_DoesNotReplaceEntityFrameworkCoreWriter()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging().UseOutbox(outbox =>
+        {
+            outbox.UseEntityFrameworkCore<TestDbContext>();
+            outbox.UseSqlServer(options =>
+                options.ConnectionString = "test-connection-string");
         });
 
         var registration = Assert.Single(

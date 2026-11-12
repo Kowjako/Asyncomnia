@@ -3,7 +3,7 @@ using System.Data.Common;
 using Dapper;
 using Microsoft.Data.SqlClient;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.TestDoubles;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.TestDoubles;
 
 internal sealed class IntegrationUnitOfWork : IIntegrationUnitOfWork, IAsyncDisposable
 {

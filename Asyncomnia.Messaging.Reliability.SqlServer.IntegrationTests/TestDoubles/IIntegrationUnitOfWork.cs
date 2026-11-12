@@ -1,6 +1,6 @@
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Transactions;
+using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.TestDoubles;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.TestDoubles;
 
 internal interface IIntegrationUnitOfWork : IInboundTransaction
 {

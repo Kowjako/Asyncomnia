@@ -56,40 +56,6 @@ public sealed class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddAsyncomniaMessaging_RegistersInboundMessageProcessorAsScoped()
-    {
-        var services = new ServiceCollection();
-
-        services.AddAsyncomniaMessaging();
-
-        var registration = Assert.Single(
-            services,
-            x => x.ServiceType == typeof(IInboundMessageProcessor));
-        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
-        Assert.Equal(
-            "InboundMessageProcessor",
-            registration.ImplementationType?.Name);
-    }
-
-    [Fact]
-    public void AddAsyncomniaMessaging_WhenInboundMessageProcessorIsAlreadyRegistered_DoesNotReplaceIt()
-    {
-        var services = new ServiceCollection();
-        var processor = new StubInboundMessageProcessor();
-        services.AddSingleton<IInboundMessageProcessor>(processor);
-
-        services.AddAsyncomniaMessaging();
-
-        var registration = Assert.Single(
-            services,
-            x => x.ServiceType == typeof(IInboundMessageProcessor));
-        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Same(
-            processor,
-            registration.ImplementationInstance);
-    }
-
-    [Fact]
     public void AddAsyncomniaMessaging_RegistersTransportPipelineAsScoped()
     {
         var services = new ServiceCollection();
@@ -179,28 +145,4 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(dispatcher);
     }
 
-    [Fact]
-    public void AddAsyncomniaMessaging_CanResolveInboundMessageProcessor()
-    {
-        var services = new ServiceCollection();
-        services.AddAsyncomniaMessaging();
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-
-        var processor = scope.ServiceProvider
-            .GetRequiredService<IInboundMessageProcessor>();
-
-        Assert.NotNull(processor);
-    }
-
-    private sealed class StubInboundMessageProcessor
-        : IInboundMessageProcessor
-    {
-        public Task ProcessAsync(
-            InboundMessageContext context,
-            CancellationToken token = default)
-        {
-            return Task.CompletedTask;
-        }
-    }
 }

@@ -1,33 +1,33 @@
 using System.Data;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Outbox;
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Tests.TestDoubles;
+using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.Tests.Outbox;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.Outbox;
 
-public sealed class DapperOutboxWriterTests
+public sealed class SqlServerOutboxWriterTests
 {
     [Fact]
     public void Constructor_WhenTransactionAccessorIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new DapperOutboxWriter(null!, CreateOptions()));
+            new SqlServerOutboxWriter(null!, CreateOptions()));
     }
 
     [Fact]
     public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new DapperOutboxWriter(new TestUnitOfWork(), null!));
+            new SqlServerOutboxWriter(new TestUnitOfWork(), null!));
     }
 
     [Fact]
     public async Task WriteAsync_WhenMessageIsNull_ThrowsArgumentNullException()
     {
-        var writer = new DapperOutboxWriter(new TestUnitOfWork(), CreateOptions());
+        var writer = new SqlServerOutboxWriter(new TestUnitOfWork(), CreateOptions());
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => writer.WriteAsync(null!));
     }
@@ -39,7 +39,7 @@ public sealed class DapperOutboxWriterTests
         {
             CurrentTransaction = new TestDbTransaction(null)
         };
-        var writer = new DapperOutboxWriter(unitOfWork, CreateOptions());
+        var writer = new SqlServerOutboxWriter(unitOfWork, CreateOptions());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             writer.WriteAsync(CreateMessage()));
@@ -55,7 +55,7 @@ public sealed class DapperOutboxWriterTests
         {
             CurrentTransaction = new TestDbTransaction(connection)
         };
-        var writer = new DapperOutboxWriter(unitOfWork, CreateOptions());
+        var writer = new SqlServerOutboxWriter(unitOfWork, CreateOptions());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             writer.WriteAsync(CreateMessage()));
@@ -66,7 +66,7 @@ public sealed class DapperOutboxWriterTests
     [Fact]
     public async Task WriteAsync_WhenCancellationIsRequested_ThrowsOperationCanceledException()
     {
-        var writer = new DapperOutboxWriter(new TestUnitOfWork(), CreateOptions());
+        var writer = new SqlServerOutboxWriter(new TestUnitOfWork(), CreateOptions());
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -109,7 +109,6 @@ public sealed class DapperOutboxWriterTests
         }
 
         public void Dispose()
-        {
-        }
+        { }
     }
 }

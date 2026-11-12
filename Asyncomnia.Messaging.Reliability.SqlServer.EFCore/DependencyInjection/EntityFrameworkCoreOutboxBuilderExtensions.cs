@@ -2,6 +2,7 @@
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Outbox;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DependencyInjection;
@@ -12,7 +13,8 @@ public static class EntityFrameworkCoreOutboxBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.TryAddScoped<IOutboxWriter, EntityFrameworkCoreOutboxWriter<TDbContext>>();
+        builder.Services.RemoveAll<IOutboxWriter>();
+        builder.Services.AddScoped<IOutboxWriter, EntityFrameworkCoreOutboxWriter<TDbContext>>();
 
         return builder;
     }

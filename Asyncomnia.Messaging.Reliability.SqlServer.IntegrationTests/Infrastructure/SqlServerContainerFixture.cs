@@ -1,6 +1,6 @@
 using Testcontainers.MsSql;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.Infrastructure;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.Infrastructure;
 
 public sealed class SqlServerContainerFixture : IAsyncLifetime
 {
@@ -22,5 +22,5 @@ public sealed class SqlServerContainerFixture : IAsyncLifetime
 [CollectionDefinition(Name)]
 public sealed class SqlServerCollection : ICollectionFixture<SqlServerContainerFixture>
 {
-    public const string Name = "SQL Server Dapper integration tests";
+    public const string Name = "SQL Server integration tests";
 }

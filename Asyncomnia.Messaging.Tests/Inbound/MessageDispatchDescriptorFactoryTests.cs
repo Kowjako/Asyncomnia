@@ -6,68 +6,73 @@ namespace Asyncomnia.Messaging.Tests.Inbound;
 public sealed class MessageDispatchDescriptorFactoryTests
 {
     [Fact]
-    public async Task CreateEvent_DispatchesTypedEnvelopeToEventPipeline()
+    public async Task CreateEvent_DispatchesContextThroughTypedEventPipelineMethod()
     {
         var message = new TestEvent("event");
-        var metadata = new MessageMetadata(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var context = CreateContext(message);
         var pipeline = new RecordingInboundMessagePipeline();
         var descriptor = MessageDispatchDescriptorFactory.CreateEvent<TestEvent>();
 
-        await descriptor.DispatchAsync(
-            pipeline,
-            message,
-            metadata,
-            CancellationToken.None);
+        await descriptor.DispatchAsync(pipeline, context, CancellationToken.None);
 
         Assert.Equal(typeof(TestEvent), descriptor.MessageType);
-        var envelope = Assert.IsType<MessageEnvelope<TestEvent>>(pipeline.EventEnvelope);
-        Assert.Same(message, envelope.Message);
-        Assert.Same(metadata, envelope.Metadata);
-        Assert.Null(pipeline.CommandEnvelope);
+        Assert.Equal(typeof(TestEvent), pipeline.EventMessageType);
+        Assert.Same(context, pipeline.EventContext);
+        Assert.Null(pipeline.CommandContext);
     }
 
     [Fact]
-    public async Task CreateCommand_DispatchesTypedEnvelopeToCommandPipeline()
+    public async Task CreateCommand_DispatchesContextThroughTypedCommandPipelineMethod()
     {
         var message = new TestCommand("command");
-        var metadata = new MessageMetadata(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var context = CreateContext(message);
         var pipeline = new RecordingInboundMessagePipeline();
         var descriptor = MessageDispatchDescriptorFactory.CreateCommand<TestCommand>();
 
-        await descriptor.DispatchAsync(
-            pipeline,
-            message,
-            metadata,
-            CancellationToken.None);
+        await descriptor.DispatchAsync(pipeline, context, CancellationToken.None);
 
         Assert.Equal(typeof(TestCommand), descriptor.MessageType);
-        var envelope = Assert.IsType<MessageEnvelope<TestCommand>>(pipeline.CommandEnvelope);
-        Assert.Same(message, envelope.Message);
-        Assert.Same(metadata, envelope.Metadata);
-        Assert.Null(pipeline.EventEnvelope);
+        Assert.Equal(typeof(TestCommand), pipeline.CommandMessageType);
+        Assert.Same(context, pipeline.CommandContext);
+        Assert.Null(pipeline.EventContext);
+    }
+
+    private static InboundMessageContext CreateContext(IMessage message)
+    {
+        return new InboundMessageContext(
+            "tests/subscription",
+            message.GetType().AssemblyQualifiedName!,
+            message,
+            new MessageMetadata(Guid.NewGuid(), DateTimeOffset.UtcNow));
     }
 
     private sealed class RecordingInboundMessagePipeline : IInboundMessagePipeline
     {
-        public object? EventEnvelope { get; private set; }
+        public Type? EventMessageType { get; private set; }
 
-        public object? CommandEnvelope { get; private set; }
+        public InboundMessageContext? EventContext { get; private set; }
+
+        public Type? CommandMessageType { get; private set; }
+
+        public InboundMessageContext? CommandContext { get; private set; }
 
         public Task HandleEventAsync<TEvent>(
-            MessageEnvelope<TEvent> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TEvent : class, IEvent
         {
-            EventEnvelope = envelope;
+            EventMessageType = typeof(TEvent);
+            EventContext = context;
             return Task.CompletedTask;
         }
 
         public Task HandleCommandAsync<TCommand>(
-            MessageEnvelope<TCommand> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TCommand : class, ICommand
         {
-            CommandEnvelope = envelope;
+            CommandMessageType = typeof(TCommand);
+            CommandContext = context;
             return Task.CompletedTask;
         }
     }

@@ -20,20 +20,20 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 public sealed class RabbitMqMessageConsumerTests
 {
     [Fact]
-    public async Task ConsumeAsync_WhenPipelineSucceeds_MapsEnvelopeAndAcknowledgesMessage()
+    public async Task ConsumeAsync_WhenPipelineSucceeds_PassesInboundContextAndAcknowledgesMessage()
     {
         var messageId = Guid.NewGuid();
         var correlationId = Guid.NewGuid();
         var createdAt = new DateTimeOffset(2026, 11, 7, 15, 30, 0, TimeSpan.Zero);
         var body = new ClientCreatedEvent("Acme");
-        MessageEnvelope<ClientCreatedEvent>? capturedEnvelope = null;
+        InboundMessageContext? capturedContext = null;
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
             .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+                It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
-            .Callback<MessageEnvelope<ClientCreatedEvent>, CancellationToken>(
-                (envelope, _) => capturedEnvelope = envelope)
+            .Callback<InboundMessageContext, CancellationToken>(
+                (context, _) => capturedContext = context)
             .Returns(Task.CompletedTask);
         await using var provider = CreateProvider(_ => pipeline.Object);
         var errorDependencies = CreateErrorStrategy(deadLetteringEnabled: false);
@@ -55,74 +55,14 @@ public sealed class RabbitMqMessageConsumerTests
             delivery,
             CancellationToken.None);
 
-        Assert.NotNull(capturedEnvelope);
-        Assert.Equal(body, capturedEnvelope.Message);
-        Assert.Equal(messageId, capturedEnvelope.Metadata.MessageId);
-        Assert.Equal(correlationId, capturedEnvelope.Metadata.CorrelationId);
-        Assert.Equal(createdAt, capturedEnvelope.Metadata.CreatedAt);
-        pipeline.VerifyAll();
-        channel.VerifyAll();
-        errorDependencies.VerifyNoCalls();
-    }
-
-    [Fact]
-    public async Task ConsumeAsync_WhenMessageIsValid_PassesInboundContextToProcessorAndAcknowledgesMessage()
-    {
-        var messageId = Guid.NewGuid();
-        var createdAt = new DateTimeOffset(
-            2026,
-            11,
-            7,
-            15,
-            30,
-            0,
-            TimeSpan.Zero);
-        var message = new ClientCreatedEvent("Acme");
-        InboundMessageContext? capturedContext = null;
-        var processor =
-            new Mock<IInboundMessageProcessor>(MockBehavior.Strict);
-        processor
-            .Setup(x => x.ProcessAsync(
-                It.IsAny<InboundMessageContext>(),
-                CancellationToken.None))
-            .Callback<InboundMessageContext, CancellationToken>(
-                (context, _) => capturedContext = context)
-            .Returns(Task.CompletedTask);
-        await using var provider = CreateProvider(processor.Object);
-        var errorDependencies = CreateErrorStrategy(
-            deadLetteringEnabled: false);
-        var consumer = CreateConsumer(
-            provider,
-            errorDependencies.Strategy);
-        var channel = new Mock<IChannel>(MockBehavior.Strict);
-        channel
-            .Setup(x => x.BasicAckAsync(
-                1,
-                false,
-                CancellationToken.None))
-            .Returns(ValueTask.CompletedTask);
-        var subscription = CreateSubscription();
-        var delivery = CreateDelivery(
-            message,
-            new MessageMetadata(messageId, createdAt));
-
-        await consumer.ConsumeAsync(
-            channel.Object,
-            subscription,
-            delivery,
-            CancellationToken.None);
-
         Assert.NotNull(capturedContext);
-        Assert.Equal(
-            subscription.QueueName,
-            capturedContext.ConsumerId);
-        Assert.Equal(
-            delivery.BasicProperties.Type,
-            capturedContext.ContractType);
-        Assert.Equal(message, capturedContext.Message);
+        Assert.Equal("events/clients/subscription/test-service", capturedContext.ConsumerId);
+        Assert.Equal(delivery.BasicProperties.Type, capturedContext.ContractType);
+        Assert.Equal(body, capturedContext.Message);
         Assert.Equal(messageId, capturedContext.Metadata.MessageId);
+        Assert.Equal(correlationId, capturedContext.Metadata.CorrelationId);
         Assert.Equal(createdAt, capturedContext.Metadata.CreatedAt);
-        processor.VerifyAll();
+        pipeline.VerifyAll();
         channel.VerifyAll();
         errorDependencies.VerifyNoCalls();
     }
@@ -301,7 +241,7 @@ public sealed class RabbitMqMessageConsumerTests
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
             .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+                It.IsAny<InboundMessageContext>(),
                 cancellationTokenSource.Token))
             .Returns(Task.FromCanceled(cancellationTokenSource.Token));
         await using var provider = CreateProvider(_ => pipeline.Object);
@@ -329,7 +269,7 @@ public sealed class RabbitMqMessageConsumerTests
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
             .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+                It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         await using var provider = CreateProvider(_ => pipeline.Object);
@@ -361,20 +301,6 @@ public sealed class RabbitMqMessageConsumerTests
         services.AddSingleton<IMessageDispatchCatalog>(
             CreateDispatchCatalog());
         services.AddScoped<IInboundMessagePipeline>(pipelineFactory);
-        services.AddScoped<
-            IInboundMessageProcessor,
-            InboundMessageProcessor>();
-        return services.BuildServiceProvider();
-    }
-
-    private static ServiceProvider CreateProvider(
-        IInboundMessageProcessor processor)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IMessageDispatchCatalog>(
-            CreateDispatchCatalog());
-        services.AddScoped<IInboundMessageProcessor>(
-            _ => processor);
         return services.BuildServiceProvider();
     }
 
@@ -487,7 +413,7 @@ public sealed class RabbitMqMessageConsumerTests
         public bool IsDisposed { get; private set; }
 
         public Task HandleEventAsync<TEvent>(
-            MessageEnvelope<TEvent> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TEvent : class, IEvent
         {
@@ -497,7 +423,7 @@ public sealed class RabbitMqMessageConsumerTests
         }
 
         public Task HandleCommandAsync<TCommand>(
-            MessageEnvelope<TCommand> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TCommand : class, ICommand
         {

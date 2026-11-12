@@ -1,24 +1,23 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.DependencyInjection;
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.Infrastructure;
-using Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.TestDoubles;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.Infrastructure;
+using Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.TestDoubles;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Dapper.IntegrationTests.Outbox;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.Outbox;
 
 [Collection(SqlServerCollection.Name)]
-public sealed class DapperOutboxIntegrationTests : IAsyncLifetime
+public sealed class SqlServerOutboxIntegrationTests : IAsyncLifetime
 {
     private readonly string _connectionString;
     private IHost? _host;
 
-    public DapperOutboxIntegrationTests(SqlServerContainerFixture fixture)
+    public SqlServerOutboxIntegrationTests(SqlServerContainerFixture fixture)
     {
         _connectionString = fixture.ConnectionString;
     }
@@ -97,12 +96,8 @@ public sealed class DapperOutboxIntegrationTests : IAsyncLifetime
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseOutbox(outbox =>
-            {
-                outbox.UseSqlServer(options =>
-                    options.ConnectionString = _connectionString);
-                outbox.UseDapper<IIntegrationUnitOfWork>();
-            });
+            .UseOutbox(outbox => outbox.UseSqlServer<IIntegrationUnitOfWork>(options =>
+                options.ConnectionString = _connectionString));
 
         _host = builder.Build();
 
