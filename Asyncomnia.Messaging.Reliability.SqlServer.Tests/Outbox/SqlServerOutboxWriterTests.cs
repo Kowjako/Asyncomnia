@@ -84,9 +84,9 @@ public sealed class SqlServerOutboxWriterTests
             new DateTimeOffset(2026, 11, 6, 10, 30, 0, TimeSpan.Zero));
     }
 
-    private static IOptions<SqlServerOutboxOptions> CreateOptions()
+    private static IOptions<SqlServerOptions> CreateOptions()
     {
-        return Options.Create(new SqlServerOutboxOptions
+        return Options.Create(new SqlServerOptions
         {
             ConnectionString = "Server=localhost;Database=AsyncomniaTests"
         });

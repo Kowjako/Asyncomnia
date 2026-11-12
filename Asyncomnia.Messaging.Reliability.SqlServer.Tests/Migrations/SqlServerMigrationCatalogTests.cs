@@ -55,7 +55,7 @@ public sealed class SqlServerMigrationCatalogTests
     }
 
     [Fact]
-    public void EmbeddedSqlResources_ContainsBootstrapAndFirstMigration()
+    public void EmbeddedSqlResources_ContainsBootstrapAndAllMigrations()
     {
         var resourceNames = typeof(SqlServerMigrator)
             .Assembly
@@ -66,6 +66,9 @@ public sealed class SqlServerMigrationCatalogTests
             resourceNames);
         Assert.Contains(
             CreateResourceName("0001_CreateOutbox"),
+            resourceNames);
+        Assert.Contains(
+            CreateResourceName("0002_CreateInbox"),
             resourceNames);
     }
 

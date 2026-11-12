@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.Configuration;
 
-public sealed class SqlServerOutboxOptionsTests
+public sealed class SqlServerOptionsTests
 {
     [Fact]
     public void UseSqlServer_WithConnectionString_UsesConfiguredConnectionString()
@@ -25,7 +25,7 @@ public sealed class SqlServerOutboxOptionsTests
         var exception = GetValidationException(_ => { });
 
         Assert.Contains(
-            "SqlServerOutboxOptions:ConnectionString cannot be empty",
+            "SqlServerOptions:ConnectionString cannot be empty",
             exception.Failures);
     }
 
