@@ -14,7 +14,7 @@ public sealed class SqlServerOutboxOptionsTests
     {
         using var provider = CreateProvider(options => options.ConnectionString = "test-connection-string");
 
-        var options = provider.GetRequiredService<IOptions<SqlServerOutboxOptions>>().Value;
+        var options = provider.GetRequiredService<IOptions<SqlServerOptions>>().Value;
 
         Assert.Equal("test-connection-string", options.ConnectionString);
     }
@@ -29,7 +29,7 @@ public sealed class SqlServerOutboxOptionsTests
             exception.Failures);
     }
 
-    private static ServiceProvider CreateProvider(Action<SqlServerOutboxOptions> configure)
+    private static ServiceProvider CreateProvider(Action<SqlServerOptions> configure)
     {
         var services = new ServiceCollection();
         services
@@ -39,10 +39,10 @@ public sealed class SqlServerOutboxOptionsTests
         return services.BuildServiceProvider();
     }
 
-    private static OptionsValidationException GetValidationException(Action<SqlServerOutboxOptions> configure)
+    private static OptionsValidationException GetValidationException(Action<SqlServerOptions> configure)
     {
         using var provider = CreateProvider(configure);
-        var options = provider.GetRequiredService<IOptions<SqlServerOutboxOptions>>();
+        var options = provider.GetRequiredService<IOptions<SqlServerOptions>>();
 
         return Assert.Throws<OptionsValidationException>(() =>
         {

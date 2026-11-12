@@ -14,13 +14,13 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 
 public static class SqlServerOutboxBuilderExtensions
 {
-    public static OutboxBuilder UseSqlServer(this OutboxBuilder builder, Action<SqlServerOutboxOptions> configure)
+    public static OutboxBuilder UseSqlServer(this OutboxBuilder builder, Action<SqlServerOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
 
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SqlServerOutboxOptions>, SqlServerOutboxOptionsValidator>());
-        builder.Services.AddOptions<SqlServerOutboxOptions>().Configure(configure).ValidateOnStart();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SqlServerOptions>, SqlServerOptionsValidator>());
+        builder.Services.AddOptions<SqlServerOptions>().Configure(configure).ValidateOnStart();
 
         builder.Services.TryAddScoped<IOutboxStore, SqlServerOutboxStore>();
         builder.Services.TryAddScoped<SqlServerMigrator>();
@@ -48,7 +48,7 @@ public static class SqlServerOutboxBuilderExtensions
     ///     }));
     /// ]]></code>
     /// </example>
-    public static OutboxBuilder UseSqlServer<TTransactionAccessor>(this OutboxBuilder builder, Action<SqlServerOutboxOptions> configure)
+    public static OutboxBuilder UseSqlServer<TTransactionAccessor>(this OutboxBuilder builder, Action<SqlServerOptions> configure)
         where TTransactionAccessor : class, IDbTransactionAccessor
     {
         ArgumentNullException.ThrowIfNull(builder);

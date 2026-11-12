@@ -8,4 +8,5 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 /// and Outbox messages produced by the handler.
 /// </summary>
 public interface IInboundTransaction : IInboxTransaction, IDbTransactionAccessor
-{ }
+{ 
+}

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 
-internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAccessor, IOptions<SqlServerOutboxOptions> options) : IOutboxWriter
+internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAccessor, IOptions<SqlServerOptions> options) : IOutboxWriter
 {
     private const string InsertSql = $@"
         INSERT INTO {SqlServerOutboxDefaults.QualifiedTableName}

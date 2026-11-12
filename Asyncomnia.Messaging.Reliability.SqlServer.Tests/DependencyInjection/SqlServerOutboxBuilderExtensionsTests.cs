@@ -64,7 +64,7 @@ public sealed class SqlServerOutboxBuilderExtensionsTests
         AssertSingleScopedRegistration<IDbTransactionAccessor>(services, "StandaloneDbTransactionAccessor");
         Assert.Single(
             services,
-            descriptor => descriptor.ServiceType == typeof(IValidateOptions<SqlServerOutboxOptions>));
+            descriptor => descriptor.ServiceType == typeof(IValidateOptions<SqlServerOptions>));
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class SqlServerOutboxBuilderExtensionsTests
         Assert.Same(unitOfWork, transactionAccessor);
     }
 
-    private static void Configure(SqlServerOutboxOptions options)
+    private static void Configure(SqlServerOptions options)
     {
         options.ConnectionString = "test-connection-string";
     }
