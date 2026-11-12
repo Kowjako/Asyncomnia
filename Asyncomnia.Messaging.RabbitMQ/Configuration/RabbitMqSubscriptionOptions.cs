@@ -1,12 +1,14 @@
 ﻿namespace Asyncomnia.Messaging.RabbitMQ.Configuration;
 
-public sealed class RabbitMqSubscriptionConsumerOptions
+public sealed class RabbitMqSubscriptionOptions
 {
     /// <summary>
-    /// Number of independent RabbitMQ consumers(channels)
-    /// created for the subscription queue.
+    /// Determines whether RabbitMQ should deliver messages to only one active
+    /// consumer across all instances connected to the subscription queue.
+    /// Standby consumers are promoted automatically when the active consumer disconnects.
+    /// This does not limit concurrent processing within the active consumer.
     /// </summary>
-    public int? ConsumerCount { get; set; }
+    public bool? SingleActiveConsumer { get; set; }
 
     /// <summary>
     /// Maximum number of unacknowledged messages delivered

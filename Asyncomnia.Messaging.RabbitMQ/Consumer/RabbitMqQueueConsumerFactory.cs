@@ -37,7 +37,7 @@ internal sealed class RabbitMqQueueConsumerFactory(IRabbitMqChannelFactory chann
         {
             await channel.BasicQosAsync(
                 prefetchSize: 0, // 0 means ignore prefetch total size
-                prefetchCount: subscription.ConsumerSettings.PrefetchCount,
+                prefetchCount: subscription.Settings.PrefetchCount,
                 global: false, // false - means this limit only for this consumer
                 cancellationToken: token);
 
@@ -68,6 +68,6 @@ internal sealed class RabbitMqQueueConsumerFactory(IRabbitMqChannelFactory chann
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
             outstandingPublisherConfirmationsRateLimiter: null,
-            consumerDispatchConcurrency: subscription.ConsumerSettings.DispatcherConcurrency);
+            consumerDispatchConcurrency: subscription.Settings.DispatcherConcurrency);
     }
 }

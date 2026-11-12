@@ -16,22 +16,18 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 public sealed class RabbitMqConsumerHostedServiceTests
 {
     [Fact]
-    public async Task StartAsync_StartsConfiguredNumberOfConsumersForEachSubscription()
+    public async Task StartAsync_StartsOneConsumerForEachSubscription()
     {
         var options = new RabbitMqConsumerOptions
         {
             EndpointName = "worker-service"
         };
-        options.ConfigureSubscription(
-            "commands/long-work-job",
-            subscription => subscription.ConsumerCount = 2);
         var consumerFactory = new Mock<IRabbitMqQueueConsumerFactory>(MockBehavior.Strict);
         var disposeOrder = new List<string>();
         var consumers = new System.Collections.Generic.Queue<IAsyncDisposable>(
         [
-            new TrackingConsumer("command-1", disposeOrder),
-            new TrackingConsumer("command-2", disposeOrder),
-            new TrackingConsumer("event-1", disposeOrder)
+            new TrackingConsumer("command", disposeOrder),
+            new TrackingConsumer("event", disposeOrder)
         ]);
         var startedExchanges = new List<string>();
         consumerFactory
@@ -53,7 +49,6 @@ public sealed class RabbitMqConsumerHostedServiceTests
         Assert.Equal(
             [
                 "commands/long-work-job",
-                "commands/long-work-job",
                 "events/clients"
             ],
             startedExchanges);
@@ -61,11 +56,11 @@ public sealed class RabbitMqConsumerHostedServiceTests
             x => x.StartAsync(
                 It.IsAny<RabbitMqSubscription>(),
                 CancellationToken.None),
-            Times.Exactly(3));
+            Times.Exactly(2));
 
         await fixture.Service.StopAsync(CancellationToken.None);
 
-        Assert.Equal(["event-1", "command-2", "command-1"], disposeOrder);
+        Assert.Equal(["event", "command"], disposeOrder);
         fixture.VerifyTopology();
         consumerFactory.VerifyAll();
     }
@@ -133,8 +128,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
     {
         var options = new RabbitMqConsumerOptions
         {
-            EndpointName = "worker-service",
-            DefaultConsumerCount = 3
+            EndpointName = "worker-service"
         };
         var disposeOrder = new List<string>();
         var startedConsumer = new TrackingConsumer("first", disposeOrder);
@@ -149,7 +143,8 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var fixture = CreateFixture(
             consumerFactory,
             options,
-            eventTypes: [typeof(ClientCreatedEvent)]);
+            eventTypes: [typeof(ClientCreatedEvent)],
+            commandTypes: [typeof(StartLongWorkJobCommand)]);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => fixture.Service.StartAsync(CancellationToken.None));
@@ -174,8 +169,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
     {
         var options = new RabbitMqConsumerOptions
         {
-            EndpointName = "worker-service",
-            DefaultConsumerCount = 2
+            EndpointName = "worker-service"
         };
         var disposeOrder = new List<string>();
         var disposeException = new InvalidOperationException("dispose failed");
@@ -194,7 +188,8 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var fixture = CreateFixture(
             consumerFactory,
             options,
-            eventTypes: [typeof(ClientCreatedEvent)]);
+            eventTypes: [typeof(ClientCreatedEvent)],
+            commandTypes: [typeof(StartLongWorkJobCommand)]);
 
         var exception = await Assert.ThrowsAsync<AggregateException>(
             () => fixture.Service.StartAsync(CancellationToken.None));
@@ -212,8 +207,7 @@ public sealed class RabbitMqConsumerHostedServiceTests
     {
         var options = new RabbitMqConsumerOptions
         {
-            EndpointName = "worker-service",
-            DefaultConsumerCount = 3
+            EndpointName = "worker-service"
         };
         var disposeOrder = new List<string>();
         var first = new TrackingConsumer("first", disposeOrder);
@@ -232,7 +226,12 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var fixture = CreateFixture(
             consumerFactory,
             options,
-            eventTypes: [typeof(ClientCreatedEvent)]);
+            eventTypes:
+            [
+                typeof(ClientCreatedEvent),
+                typeof(HTTPResponseReceivedEvent)
+            ],
+            commandTypes: [typeof(StartLongWorkJobCommand)]);
         await fixture.Service.StartAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsAsync<AggregateException>(

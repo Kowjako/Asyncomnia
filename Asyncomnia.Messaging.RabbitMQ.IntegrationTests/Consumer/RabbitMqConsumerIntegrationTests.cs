@@ -178,11 +178,11 @@ public sealed class RabbitMqConsumerIntegrationTests
     }
 
     [Fact]
-    public async Task CompetingConsumers_ProcessTwoLongRunningCommandsConcurrently()
+    public async Task CompetingConsumers_AcrossTwoHosts_ProcessLongRunningCommandsConcurrently()
     {
         var endpointName = CreateEndpointName();
         var probe = new ConcurrentCommandProbe();
-        using var host = CreateHost(
+        using var firstHost = CreateHost(
             endpointName,
             services => services.AddSingleton(probe),
             messaging => messaging
@@ -193,14 +193,28 @@ public sealed class RabbitMqConsumerIntegrationTests
                 "commands/long-work-job",
                 subscription =>
                 {
-                    subscription.ConsumerCount = 2;
+                    subscription.PrefetchCount = 1;
+                    subscription.DispatcherConcurrency = 1;
+                }));
+        using var secondHost = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterCommandHandler<
+                    StartLongWorkJobCommand,
+                    BlockingLongWorkJobCommandHandler>(),
+            options => options.ConfigureSubscription(
+                "commands/long-work-job",
+                subscription =>
+                {
                     subscription.PrefetchCount = 1;
                     subscription.DispatcherConcurrency = 1;
                 }));
         using var cancellationTokenSource =
             new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var ct = cancellationTokenSource.Token;
-        await host.StartAsync(ct);
+        await firstHost.StartAsync(ct);
+        await secondHost.StartAsync(ct);
 
         try
         {
@@ -210,7 +224,7 @@ public sealed class RabbitMqConsumerIntegrationTests
                 ct);
             Assert.Equal((uint)2, queueStats.ConsumerCount);
 
-            await using var scope = host.Services.CreateAsyncScope();
+            await using var scope = firstHost.Services.CreateAsyncScope();
             var sender = scope.ServiceProvider
                 .GetRequiredService<ICommandSender>();
 
@@ -231,7 +245,180 @@ public sealed class RabbitMqConsumerIntegrationTests
         finally
         {
             probe.Release();
-            await StopHostAsync(host);
+            await StopHostAsync(secondHost);
+            await StopHostAsync(firstHost);
+        }
+    }
+
+    [Fact]
+    public async Task SingleActiveConsumer_AcrossTwoHosts_ProcessesCommandsSequentially()
+    {
+        var endpointName = CreateEndpointName();
+        var probe = new ConcurrentCommandProbe();
+        Action<RabbitMqConsumerOptions> configureConsumer = options =>
+            options.ConfigureSubscription(
+                "commands/long-work-job",
+                subscription =>
+                {
+                    subscription.SingleActiveConsumer = true;
+                    subscription.PrefetchCount = 1;
+                    subscription.DispatcherConcurrency = 1;
+                });
+        using var firstHost = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterCommandHandler<
+                    StartLongWorkJobCommand,
+                    BlockingLongWorkJobCommandHandler>(),
+            configureConsumer);
+        using var secondHost = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterCommandHandler<
+                    StartLongWorkJobCommand,
+                    BlockingLongWorkJobCommandHandler>(),
+            configureConsumer);
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await firstHost.StartAsync(ct);
+        await secondHost.StartAsync(ct);
+
+        try
+        {
+            var queueName =
+                $"commands/long-work-job/subscription/{endpointName}";
+            var queueStats = await WaitForQueueStatsAsync(
+                queueName,
+                stats => stats.ConsumerCount == 2,
+                ct);
+            Assert.Equal((uint)2, queueStats.ConsumerCount);
+
+            await using var scope = firstHost.Services.CreateAsyncScope();
+            var sender = scope.ServiceProvider
+                .GetRequiredService<ICommandSender>();
+
+            await sender.SendAsync(
+                new StartLongWorkJobCommand(Guid.NewGuid()),
+                token: ct);
+            await sender.SendAsync(
+                new StartLongWorkJobCommand(Guid.NewGuid()),
+                token: ct);
+
+            await probe.WaitUntilOneStartedAsync(ct);
+
+            var blockedStats = await WaitForQueueStatsAsync(
+                queueName,
+                stats => stats.MessageCount == 1,
+                ct);
+
+            Assert.Equal((uint)1, blockedStats.MessageCount);
+            Assert.Equal(1, probe.MaximumActive);
+
+            probe.Release();
+            await probe.WaitUntilAllCompletedAsync(ct);
+
+            Assert.Equal(1, probe.MaximumActive);
+        }
+        finally
+        {
+            probe.Release();
+            await StopHostAsync(secondHost);
+            await StopHostAsync(firstHost);
+        }
+    }
+
+    [Fact]
+    public async Task SingleActiveConsumer_WhenActiveHostStops_PromotesStandbyConsumer()
+    {
+        var endpointName = CreateEndpointName();
+        var firstProbe = new MessageProbe<StartLongWorkJobCommand>();
+        var secondProbe = new MessageProbe<StartLongWorkJobCommand>();
+        Action<RabbitMqConsumerOptions> configureConsumer = options =>
+            options.ConfigureSubscription(
+                "commands/long-work-job",
+                subscription =>
+                {
+                    subscription.SingleActiveConsumer = true;
+                    subscription.PrefetchCount = 1;
+                    subscription.DispatcherConcurrency = 1;
+                });
+        using var firstHost = CreateHost(
+            endpointName,
+            services => services.AddSingleton(firstProbe),
+            messaging => messaging
+                .RegisterCommandHandler<
+                    StartLongWorkJobCommand,
+                    StartLongWorkJobCommandHandler>(),
+            configureConsumer);
+        using var secondHost = CreateHost(
+            endpointName,
+            services => services.AddSingleton(secondProbe),
+            messaging => messaging
+                .RegisterCommandHandler<
+                    StartLongWorkJobCommand,
+                    StartLongWorkJobCommandHandler>(),
+            configureConsumer);
+        using var publisherProvider = CreatePublisherProvider();
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        await firstHost.StartAsync(ct);
+        await secondHost.StartAsync(ct);
+
+        try
+        {
+            var queueName =
+                $"commands/long-work-job/subscription/{endpointName}";
+            await WaitForQueueStatsAsync(
+                queueName,
+                stats => stats.ConsumerCount == 2,
+                ct);
+            await using var scope = publisherProvider.CreateAsyncScope();
+            var sender = scope.ServiceProvider
+                .GetRequiredService<ICommandSender>();
+            var firstCommand =
+                new StartLongWorkJobCommand(Guid.NewGuid());
+            var firstHostHandled = firstProbe.WaitAsync(ct);
+            var secondHostHandled = secondProbe.WaitAsync(ct);
+
+            await sender.SendAsync(firstCommand, token: ct);
+
+            var activeProbeTask = await Task.WhenAny(
+                firstHostHandled,
+                secondHostHandled);
+            var firstHandled = await activeProbeTask;
+            Assert.Equal(firstCommand, firstHandled.Message);
+
+            var firstHostWasActive =
+                ReferenceEquals(activeProbeTask, firstHostHandled);
+            var activeHost = firstHostWasActive
+                ? firstHost
+                : secondHost;
+            var standbyProbeTask = firstHostWasActive
+                ? secondHostHandled
+                : firstHostHandled;
+
+            await StopHostAsync(activeHost);
+            await WaitForQueueStatsAsync(
+                queueName,
+                stats => stats.ConsumerCount == 1,
+                ct);
+
+            var secondCommand =
+                new StartLongWorkJobCommand(Guid.NewGuid());
+            await sender.SendAsync(secondCommand, token: ct);
+
+            var secondHandled = await standbyProbeTask;
+
+            Assert.Equal(secondCommand, secondHandled.Message);
+        }
+        finally
+        {
+            await StopHostAsync(secondHost);
+            await StopHostAsync(firstHost);
         }
     }
 

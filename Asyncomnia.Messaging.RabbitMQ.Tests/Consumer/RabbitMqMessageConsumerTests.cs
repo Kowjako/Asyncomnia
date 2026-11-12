@@ -29,7 +29,7 @@ public sealed class RabbitMqMessageConsumerTests
         InboundMessageContext? capturedContext = null;
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
                 It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
             .Callback<InboundMessageContext, CancellationToken>(
@@ -240,7 +240,7 @@ public sealed class RabbitMqMessageConsumerTests
         cancellationTokenSource.Cancel();
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
                 It.IsAny<InboundMessageContext>(),
                 cancellationTokenSource.Token))
             .Returns(Task.FromCanceled(cancellationTokenSource.Token));
@@ -268,7 +268,7 @@ public sealed class RabbitMqMessageConsumerTests
     {
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
                 It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -358,7 +358,7 @@ public sealed class RabbitMqMessageConsumerTests
                     "client-created-event",
                     messageType ?? typeof(ClientCreatedEvent))
             ],
-            ConsumerSettings = new RabbitMqConsumerSettings(1, 1, 1)
+            Settings = new RabbitMqSubscriptionSettings(false, 1, 1)
         };
     }
 

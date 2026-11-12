@@ -36,21 +36,6 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
         Assert.True(result.Succeeded);
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Validate_WhenDefaultConsumerCountIsNotPositive_ReturnsFailure(
-        int consumerCount)
-    {
-        var options = CreateValidOptions();
-        options.DefaultConsumerCount = consumerCount;
-
-        var result = _validator.Validate(null, options);
-
-        Assert.True(result.Failed);
-        Assert.Contains(nameof(options.DefaultConsumerCount), result.FailureMessage);
-    }
-
     [Fact]
     public void Validate_WhenDefaultPrefetchCountIsZero_ReturnsFailure()
     {
@@ -75,24 +60,6 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
         Assert.Contains(nameof(options.DefaultDispatcherConcurrency), result.FailureMessage);
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Validate_WhenSubscriptionConsumerCountIsNotPositive_ReturnsFailure(
-        int consumerCount)
-    {
-        var options = CreateValidOptions();
-        options.ConfigureSubscription(
-            "commands/long-work-job",
-            subscription => subscription.ConsumerCount = consumerCount);
-
-        var result = _validator.Validate(null, options);
-
-        Assert.True(result.Failed);
-        Assert.Contains("commands/long-work-job", result.FailureMessage);
-        Assert.Contains(nameof(RabbitMqSubscriptionConsumerOptions.ConsumerCount), result.FailureMessage);
-    }
-
     [Fact]
     public void Validate_WhenSubscriptionPrefetchCountIsZero_ReturnsFailure()
     {
@@ -105,7 +72,7 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
 
         Assert.True(result.Failed);
         Assert.Contains("commands/long-work-job", result.FailureMessage);
-        Assert.Contains(nameof(RabbitMqSubscriptionConsumerOptions.PrefetchCount), result.FailureMessage);
+        Assert.Contains(nameof(RabbitMqSubscriptionOptions.PrefetchCount), result.FailureMessage);
     }
 
     [Fact]
@@ -120,7 +87,7 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
 
         Assert.True(result.Failed);
         Assert.Contains("commands/long-work-job", result.FailureMessage);
-        Assert.Contains(nameof(RabbitMqSubscriptionConsumerOptions.DispatcherConcurrency), result.FailureMessage);
+        Assert.Contains(nameof(RabbitMqSubscriptionOptions.DispatcherConcurrency), result.FailureMessage);
     }
 
     [Fact]
@@ -131,7 +98,7 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
             "commands/long-work-job",
             subscription =>
             {
-                subscription.ConsumerCount = 2;
+                subscription.SingleActiveConsumer = true;
                 subscription.PrefetchCount = 1;
                 subscription.DispatcherConcurrency = 1;
             });

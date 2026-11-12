@@ -46,7 +46,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
                 (options, _) => capturedOptions = options)
             .ReturnsAsync(channel.Object);
         await using var dependencies = CreateFactory(channelFactory.Object);
-        var subscription = CreateSubscription(new RabbitMqConsumerSettings(2, 3, 4));
+        var subscription = CreateSubscription(new RabbitMqSubscriptionSettings(false, 3, 4));
 
         var result = await dependencies.Factory.StartAsync(subscription);
 
@@ -71,7 +71,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => dependencies.Factory.StartAsync(
-                CreateSubscription(new RabbitMqConsumerSettings(1, 1, 1)),
+                CreateSubscription(new RabbitMqSubscriptionSettings(false, 1, 1)),
                 cancellationTokenSource.Token));
 
         channelFactory.VerifyNoOtherCalls();
@@ -121,7 +121,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => dependencies.Factory.StartAsync(
-                CreateSubscription(new RabbitMqConsumerSettings(1, 1, 1))));
+                CreateSubscription(new RabbitMqSubscriptionSettings(false, 1, 1))));
 
         Assert.Same(expectedException, exception);
         channelFactory.VerifyAll();
@@ -150,14 +150,14 @@ public sealed class RabbitMqQueueConsumerFactoryTests
             new RabbitMqQueueConsumerFactory(channelFactory, messageConsumer));
     }
 
-    private static RabbitMqSubscription CreateSubscription(RabbitMqConsumerSettings settings)
+    private static RabbitMqSubscription CreateSubscription(RabbitMqSubscriptionSettings settings)
     {
         return new RabbitMqSubscription
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
             Bindings = [],
-            ConsumerSettings = settings
+            Settings = settings
         };
     }
 

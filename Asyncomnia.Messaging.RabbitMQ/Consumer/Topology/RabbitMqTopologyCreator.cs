@@ -43,7 +43,7 @@ internal sealed class RabbitMqTopologyCreator(IRabbitMqChannelFactory channelFac
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
-                arguments: null,
+                arguments: CreateQueueArguments(sub),
                 noWait: false,
                 cancellationToken: token);
 
@@ -60,5 +60,18 @@ internal sealed class RabbitMqTopologyCreator(IRabbitMqChannelFactory channelFac
         }
 
         return subscriptions;
+    }
+
+    private static IDictionary<string, object?>? CreateQueueArguments(RabbitMqSubscription subscription)
+    {
+        if (!subscription.Settings.SingleActiveConsumer)
+        {
+            return null;
+        }
+
+        return new Dictionary<string, object?>
+        {
+            ["x-single-active-consumer"] = true
+        };
     }
 }

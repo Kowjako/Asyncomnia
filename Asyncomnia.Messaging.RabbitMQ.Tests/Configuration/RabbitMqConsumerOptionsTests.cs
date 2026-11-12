@@ -13,6 +13,14 @@ public sealed class RabbitMqConsumerOptionsTests
     }
 
     [Fact]
+    public void SingleActiveConsumer_ByDefault_IsDisabled()
+    {
+        var options = new RabbitMqConsumerOptions();
+
+        Assert.False(options.DefaultSingleActiveConsumer);
+    }
+
+    [Fact]
     public void BrokerRetries_ByDefault_AreDisabledWithDefaultDelaySchedule()
     {
         var options = new RabbitMqConsumerOptions();
@@ -28,38 +36,38 @@ public sealed class RabbitMqConsumerOptionsTests
     }
 
     [Fact]
-    public void GetConsumerSettings_WithoutOverride_ReturnsDefaults()
+    public void GetSubscriptionSettings_WithoutOverride_ReturnsDefaults()
     {
         var options = new RabbitMqConsumerOptions
         {
-            DefaultConsumerCount = 2,
+            DefaultSingleActiveConsumer = true,
             DefaultPrefetchCount = 3,
             DefaultDispatcherConcurrency = 4
         };
 
-        var settings = options.GetConsumerSettings("events/clients");
+        var settings = options.GetSubscriptionSettings("events/clients");
 
-        Assert.Equal(2, settings.ConsumerCount);
+        Assert.True(settings.SingleActiveConsumer);
         Assert.Equal((ushort)3, settings.PrefetchCount);
         Assert.Equal((ushort)4, settings.DispatcherConcurrency);
     }
 
     [Fact]
-    public void GetConsumerSettings_WithPartialOverride_InheritsRemainingDefaults()
+    public void GetSubscriptionSettings_WithPartialOverride_InheritsRemainingDefaults()
     {
         var options = new RabbitMqConsumerOptions
         {
-            DefaultConsumerCount = 2,
+            DefaultSingleActiveConsumer = true,
             DefaultPrefetchCount = 3,
             DefaultDispatcherConcurrency = 4
         };
         options.ConfigureSubscription(
             "commands/long-work-job",
-            subscription => subscription.ConsumerCount = 5);
+            subscription => subscription.SingleActiveConsumer = false);
 
-        var settings = options.GetConsumerSettings("commands/long-work-job");
+        var settings = options.GetSubscriptionSettings("commands/long-work-job");
 
-        Assert.Equal(5, settings.ConsumerCount);
+        Assert.False(settings.SingleActiveConsumer);
         Assert.Equal((ushort)3, settings.PrefetchCount);
         Assert.Equal((ushort)4, settings.DispatcherConcurrency);
     }
@@ -70,14 +78,14 @@ public sealed class RabbitMqConsumerOptionsTests
         var options = new RabbitMqConsumerOptions();
         options.ConfigureSubscription(
             "events/clients",
-            subscription => subscription.ConsumerCount = 2);
+            subscription => subscription.SingleActiveConsumer = true);
         options.ConfigureSubscription(
             "events/clients",
             subscription => subscription.PrefetchCount = 7);
 
-        var settings = options.GetConsumerSettings("events/clients");
+        var settings = options.GetSubscriptionSettings("events/clients");
 
-        Assert.Equal(2, settings.ConsumerCount);
+        Assert.True(settings.SingleActiveConsumer);
         Assert.Equal((ushort)7, settings.PrefetchCount);
         Assert.Equal(options.DefaultDispatcherConcurrency, settings.DispatcherConcurrency);
         Assert.Single(options.Subscriptions);
@@ -89,16 +97,18 @@ public sealed class RabbitMqConsumerOptionsTests
         var options = new RabbitMqConsumerOptions();
         options.ConfigureSubscription(
             "events/clients",
-            subscription => subscription.ConsumerCount = 2);
+            subscription => subscription.SingleActiveConsumer = true);
         options.ConfigureSubscription(
             "events/vip",
-            subscription => subscription.ConsumerCount = 3);
+            subscription => subscription.PrefetchCount = 3);
 
-        var clients = options.GetConsumerSettings("events/clients");
-        var vip = options.GetConsumerSettings("events/vip");
+        var clients = options.GetSubscriptionSettings("events/clients");
+        var vip = options.GetSubscriptionSettings("events/vip");
 
-        Assert.Equal(2, clients.ConsumerCount);
-        Assert.Equal(3, vip.ConsumerCount);
+        Assert.True(clients.SingleActiveConsumer);
+        Assert.Equal(options.DefaultPrefetchCount, clients.PrefetchCount);
+        Assert.False(vip.SingleActiveConsumer);
+        Assert.Equal((ushort)3, vip.PrefetchCount);
         Assert.Equal(2, options.Subscriptions.Count);
     }
 
@@ -127,12 +137,12 @@ public sealed class RabbitMqConsumerOptionsTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void GetConsumerSettings_WhenExchangeNameIsMissing_Throws(
+    public void GetSubscriptionSettings_WhenExchangeNameIsMissing_Throws(
         string? exchangeName)
     {
         var options = new RabbitMqConsumerOptions();
 
         Assert.ThrowsAny<ArgumentException>(
-            () => options.GetConsumerSettings(exchangeName!));
+            () => options.GetSubscriptionSettings(exchangeName!));
     }
 }

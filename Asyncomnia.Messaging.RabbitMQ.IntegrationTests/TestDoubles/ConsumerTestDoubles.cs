@@ -135,6 +135,8 @@ internal sealed class BlockingLongWorkJobCommandHandler(ConcurrentCommandProbe p
 
 internal sealed class ConcurrentCommandProbe
 {
+    private readonly TaskCompletionSource<bool> _oneStarted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _twoStarted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _allCompleted =
@@ -154,7 +156,14 @@ internal sealed class ConcurrentCommandProbe
         var active = Interlocked.Increment(ref _active);
         UpdateMaximumActive(active);
 
-        if (Interlocked.Increment(ref _started) == 2)
+        var started = Interlocked.Increment(ref _started);
+
+        if (started == 1)
+        {
+            _oneStarted.TrySetResult(true);
+        }
+
+        if (started == 2)
         {
             _twoStarted.TrySetResult(true);
         }
@@ -172,6 +181,11 @@ internal sealed class ConcurrentCommandProbe
                 _allCompleted.TrySetResult(true);
             }
         }
+    }
+
+    public Task WaitUntilOneStartedAsync(CancellationToken ct)
+    {
+        return _oneStarted.Task.WaitAsync(ct);
     }
 
     public Task WaitUntilTwoStartedAsync(CancellationToken ct)
