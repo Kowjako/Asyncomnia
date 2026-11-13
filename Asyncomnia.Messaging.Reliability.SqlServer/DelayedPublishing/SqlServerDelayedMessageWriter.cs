@@ -85,11 +85,11 @@ internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor trans
     private async Task<bool> CancelUsingTransactionAsync(Guid scheduleId, IDbTransaction transaction, CancellationToken token)
     {
         var connection = transaction.Connection
-            ?? throw new InvalidOperationException("The current Outbox transaction is no longer associated with a database connection.");
+            ?? throw new InvalidOperationException("The current Delayed message transaction is no longer associated with a database connection.");
 
         if (connection.State != ConnectionState.Open)
         {
-            throw new InvalidOperationException("The database connection associated with the current Outbox transaction must be open.");
+            throw new InvalidOperationException("The database connection associated with the current Delayed message transaction must be open.");
         }
 
         return await ExecuteCancelAsync(connection, transaction, scheduleId, token);
@@ -106,11 +106,11 @@ internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor trans
     private async Task WriteUsingTransactionAsync(DelayedMessage message, IDbTransaction transaction, CancellationToken token)
     {
         var connection = transaction.Connection
-            ?? throw new InvalidOperationException("The current Outbox transaction is no longer associated with a database connection.");
+            ?? throw new InvalidOperationException("The current Delayed message transaction is no longer associated with a database connection.");
 
         if (connection.State != ConnectionState.Open)
         {
-            throw new InvalidOperationException("The database connection associated with the current Outbox transaction must be open.");
+            throw new InvalidOperationException("The database connection associated with the current Delayed message transaction must be open.");
         }
 
         await ExecuteInsertAsync(connection, transaction, message, token);

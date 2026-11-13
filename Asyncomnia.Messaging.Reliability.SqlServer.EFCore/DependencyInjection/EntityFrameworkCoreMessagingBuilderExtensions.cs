@@ -1,6 +1,8 @@
 ﻿using Asyncomnia.Messaging.Configuration;
+using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Outbox;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +22,9 @@ public static class EntityFrameworkCoreMessagingBuilderExtensions
         builder.Services.AddScoped<IOutboxWriter, EntityFrameworkCoreOutboxWriter<TDbContext>>();
 
         builder.Services.TryAddScoped<EntityFrameworkCoreInboundTransaction<TDbContext>>();
+
+        builder.Services.RemoveAll<IDelayedMessageWriter>();
+        builder.Services.AddScoped<IDelayedMessageWriter, EntityFrameworkCoreDelayedMessageWriter<TDbContext>>();
 
         return builder.UseInboundTransaction<EntityFrameworkCoreInboundTransaction<TDbContext>>();
     }
