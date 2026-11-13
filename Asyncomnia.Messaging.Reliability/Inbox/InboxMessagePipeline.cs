@@ -5,7 +5,7 @@ namespace Asyncomnia.Messaging.Reliability.Inbox;
 internal sealed class InboxMessagePipeline(
     HandlerMessagePipeline next,
     IInboxWriter writer,
-    IInboxTransaction transaction,
+    IInboundTransaction transaction,
     TimeProvider timeProvider) : IInboundMessagePipeline
 {
     private readonly HandlerMessagePipeline _next =
@@ -14,7 +14,7 @@ internal sealed class InboxMessagePipeline(
     private readonly IInboxWriter _writer =
         writer ?? throw new ArgumentNullException(nameof(writer));
 
-    private readonly IInboxTransaction _transaction =
+    private readonly IInboundTransaction _transaction =
         transaction ?? throw new ArgumentNullException(nameof(transaction));
 
     private readonly TimeProvider _timeProvider =

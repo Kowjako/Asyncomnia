@@ -7,7 +7,7 @@ using Microsoft.Data.SqlClient;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 
-internal sealed class SqlServerInboxWriter(IInboundTransaction transaction) : IInboxWriter
+internal sealed class SqlServerInboxWriter(IDbTransactionAccessor transactionAccessor) : IInboxWriter
 {
     private const string InsertSql = $@"
         INSERT INTO {SqlServerInboxDefaults.QualifiedTableName}
@@ -25,15 +25,15 @@ internal sealed class SqlServerInboxWriter(IInboundTransaction transaction) : II
             @ReceivedAt
         )";
 
-    private readonly IInboundTransaction _transaction = transaction
-       ?? throw new ArgumentNullException(nameof(transaction));
+    private readonly IDbTransactionAccessor _transactionAccessor = transactionAccessor
+       ?? throw new ArgumentNullException(nameof(transactionAccessor));
 
     public async Task<bool> TryAddAsync(InboxMessage message, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(message);
         token.ThrowIfCancellationRequested();
 
-        var tx = _transaction.CurrentTransaction 
+        var tx = _transactionAccessor.CurrentTransaction 
             ?? throw new InvalidOperationException("An active inbox transaction is required");
 
         var connection = tx.Connection 

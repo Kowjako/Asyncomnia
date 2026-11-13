@@ -1,6 +1,6 @@
 ﻿namespace Asyncomnia.Messaging.Reliability.Inbox;
 
-public interface IInboxTransaction
+public interface IInboundTransaction
 {
     Task BeginAsync(CancellationToken token = default);
 

@@ -8,10 +8,9 @@ namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class InboxBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseInbox(this AsyncomniaMessagingBuilder builder, Action<InboxBuilder> configure)
+    public static AsyncomniaMessagingBuilder UseInbox(this AsyncomniaMessagingBuilder builder, Action<InboxBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(configure);
 
         // Cleanup IInboundMessagePipeline registration which comes from AddAsyncomniaMessaging()
         builder.Services.RemoveAll<IInboundMessagePipeline>();
@@ -20,8 +19,7 @@ public static class InboxBuilderExtensions
         builder.Services.AddScoped<IInboundMessagePipeline, InboxMessagePipeline>();
 
         var inboxBuilder = new InboxBuilder(builder.Services);
-
-        configure(inboxBuilder);
+        configure?.Invoke(inboxBuilder);
 
         return builder;
     }
