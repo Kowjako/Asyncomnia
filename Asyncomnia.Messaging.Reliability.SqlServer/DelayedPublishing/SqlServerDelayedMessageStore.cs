@@ -12,6 +12,8 @@ internal sealed class SqlServerDelayedMessageStore(IOptions<SqlServerOptions> op
         ?? throw new ArgumentNullException(nameof(options));
 
     private const string MoveDueSql = $@"
+        DECLARE @OutboxAvailableAt datetimeoffset(7) = SYSUTCDATETIME();
+
         DECLARE @DueMessages TABLE
         (
             [MessageId] uniqueidentifier NOT NULL,
@@ -66,7 +68,7 @@ internal sealed class SqlServerDelayedMessageStore(IOptions<SqlServerOptions> op
             [MessageJson],
             [CorrelationId],
             [CreatedAt],
-            @UtcNow
+            @OutboxAvailableAt
         FROM @DueMessages;
 
         SELECT COUNT(*) FROM @DueMessages";

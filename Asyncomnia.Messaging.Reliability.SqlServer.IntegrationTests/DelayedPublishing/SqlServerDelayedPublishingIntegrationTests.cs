@@ -4,6 +4,7 @@ using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.Infrastructure;
 using Asyncomnia.Messaging.Reliability.SqlServer.IntegrationTests.TestDoubles;
+using Asyncomnia.Messaging.Transport;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
@@ -170,8 +171,10 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
             UtcNow.AddTicks(1));
         var scheduledRows = (await GetDelayedRowsAsync())
             .ToDictionary(row => row.ScheduleId);
+        var databaseUtcBefore = await GetDatabaseUtcNowAsync();
 
         var movedCount = await store.MoveDueToOutboxAsync(UtcNow, batchSize: 10);
+        var databaseUtcAfter = await GetDatabaseUtcNowAsync();
 
         Assert.Equal(2, movedCount);
         var remainingScheduleIds = (await GetDelayedRowsAsync())
@@ -194,7 +197,12 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
         Assert.Contains(
             outboxRows,
             row => row.MessageId == scheduledRows[boundaryScheduleId].MessageId);
-        Assert.All(outboxRows, row => Assert.Equal(UtcNow, row.AvailableAt));
+        Assert.All(
+            outboxRows,
+            row => Assert.InRange(
+                row.AvailableAt,
+                databaseUtcBefore,
+                databaseUtcAfter));
     }
 
     [Fact]
@@ -278,7 +286,7 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HostedWorker_MovesDueMessageToOutbox()
+    public async Task HostedWorkers_MoveDueMessageToOutboxAndDispatchIt()
     {
         await using (var scope = _host!.Services.CreateAsyncScope())
         {
@@ -291,7 +299,7 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
         await _host!.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-        while (await CountOutboxMessagesAsync() == 0)
+        while (await CountProcessedOutboxMessagesAsync() == 0)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
         }
@@ -300,6 +308,7 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
 
         Assert.Equal(0, await CountDelayedMessagesAsync());
         Assert.Equal(1, await CountOutboxMessagesAsync());
+        Assert.Equal(1, await CountProcessedOutboxMessagesAsync());
     }
 
     public async Task InitializeAsync()
@@ -309,6 +318,7 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
         builder.Services.AddSingleton<TimeProvider>(new FixedTimeProvider(UtcNow));
         builder.Services.AddScoped<IIntegrationUnitOfWork>(_ =>
             new IntegrationUnitOfWork(_connectionString));
+        builder.Services.AddSingleton<IOutboundTransport, SuccessfulOutboundTransport>();
 
         builder.Services
             .AddAsyncomniaMessaging()
@@ -448,6 +458,18 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
             "SELECT COUNT(*) FROM [asyncomnia].[Outbox]");
     }
 
+    private Task<int> CountProcessedOutboxMessagesAsync()
+    {
+        return ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM [asyncomnia].[Outbox] WHERE [ProcessedAt] IS NOT NULL");
+    }
+
+    private Task<DateTimeOffset> GetDatabaseUtcNowAsync()
+    {
+        return ExecuteScalarAsync<DateTimeOffset>(
+            "SELECT CAST(SYSUTCDATETIME() AS datetimeoffset(7))");
+    }
+
     private async Task<T?> ExecuteScalarAsync<T>(string sql)
     {
         await using var connection = new SqlConnection(_connectionString);
@@ -477,6 +499,17 @@ public sealed class SqlServerDelayedPublishingIntegrationTests : IAsyncLifetime
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private sealed class SuccessfulOutboundTransport : IOutboundTransport
+    {
+        public Task DispatchAsync(
+            IMessage message,
+            MessageMetadata metadata,
+            CancellationToken token = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class DelayedRow

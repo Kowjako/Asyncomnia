@@ -22,6 +22,7 @@ public static class DelayedPublishingBuilderExtensions
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DelayedPublishingOptions>, DelayedPublishingOptionsValidator>());
         builder.Services.AddOptions<DelayedPublishingOptions>().ValidateOnStart();
+        builder.Services.AddOutboxProcessing();
 
         var delayedPublishingBuilder = new DelayedPublishingBuilder(builder.Services);
         configure?.Invoke(delayedPublishingBuilder);
