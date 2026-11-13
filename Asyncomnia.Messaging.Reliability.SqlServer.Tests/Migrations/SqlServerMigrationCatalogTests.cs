@@ -12,6 +12,7 @@ public sealed class SqlServerMigrationCatalogTests
     {
         var resourceNames = new[]
         {
+            CreateResourceName("0003_CreateInboxCleanupIndex"),
             CreateResourceName("0002_CreateInbox"),
             "Asyncomnia.Unrelated.Resource.sql",
             CreateResourceName("0001_CreateOutbox")
@@ -22,7 +23,8 @@ public sealed class SqlServerMigrationCatalogTests
         Assert.Collection(
             migrations,
             migration => Assert.Equal("0001_CreateOutbox", migration.Id),
-            migration => Assert.Equal("0002_CreateInbox", migration.Id));
+            migration => Assert.Equal("0002_CreateInbox", migration.Id),
+            migration => Assert.Equal("0003_CreateInboxCleanupIndex", migration.Id));
     }
 
     [Fact]
@@ -69,6 +71,9 @@ public sealed class SqlServerMigrationCatalogTests
             resourceNames);
         Assert.Contains(
             CreateResourceName("0002_CreateInbox"),
+            resourceNames);
+        Assert.Contains(
+            CreateResourceName("0003_CreateInboxCleanupIndex"),
             resourceNames);
     }
 

@@ -1,7 +1,11 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.Inbox.Configuration;
+using Asyncomnia.Messaging.Reliability.Inbox.Processing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.Tests.DependencyInjection;
 
@@ -57,6 +61,19 @@ public sealed class InboxBuilderExtensionsTests
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(HandlerMessagePipeline));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(InboxCleanupProcessor));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IValidateOptions<InboxOptions>));
+
+        var hostedService = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHostedService));
+        Assert.Equal(
+            "InboxCleanupBackgroundJob",
+            hostedService.ImplementationType?.Name);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Inbox;
+using Asyncomnia.Messaging.Reliability.Inbox.Storage;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
@@ -38,6 +39,7 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
         AssertSingleScopedRegistration<IOutboxStore>(services, "SqlServerOutboxStore");
         AssertSingleScopedRegistration<IOutboxWriter>(services, nameof(SqlServerOutboxWriter));
         AssertSingleScopedRegistration<IInboxWriter>(services, nameof(SqlServerInboxWriter));
+        AssertSingleScopedRegistration<IInboxCleanupStore>(services, nameof(SqlServerInboxCleanupStore));
         AssertSingleScopedRegistration<SqlServerMigrator>(services, nameof(SqlServerMigrator));
         AssertSingleScopedRegistration<IDbTransactionAccessor>(services, "StandaloneDbTransactionAccessor");
         Assert.Single(
