@@ -5,7 +5,7 @@ using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
-namespace Asyncomnia.Messaging.Reliability.SqlServer.Storage;
+namespace Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 
 internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) : IOutboxStore
 {

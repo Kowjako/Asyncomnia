@@ -1,6 +1,8 @@
 ﻿using Asyncomnia.Messaging.Configuration;
+using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +19,9 @@ public static class AdoNetMessagingBuilderExtensions
 
         builder.Services.RemoveAll<IOutboxWriter>();
         builder.Services.AddScoped<IOutboxWriter, SqlServerOutboxWriter>();
+
+        builder.Services.RemoveAll<IDelayedMessageWriter>();
+        builder.Services.AddScoped<IDelayedMessageWriter, SqlServerDelayedMessageWriter>();
 
         return builder.UseInboundTransaction<TTransaction>();
     }

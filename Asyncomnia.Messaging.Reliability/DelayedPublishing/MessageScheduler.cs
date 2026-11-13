@@ -45,7 +45,7 @@ internal sealed class MessageScheduler(
             ClrMessageTypeResolver.GetContractType(messageType), _serializer.SerializeToString(message),
             envelope.Metadata.CorrelationId, envelope.Metadata.CreatedAt, deliverAt);
 
-        await _writer.WriteAsync(delayedMessage);
+        await _writer.WriteAsync(delayedMessage, token);
         return scheduleId;
     }
 
