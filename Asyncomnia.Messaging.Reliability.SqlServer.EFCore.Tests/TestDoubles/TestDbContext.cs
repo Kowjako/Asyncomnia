@@ -16,6 +16,7 @@ internal sealed class TestDbContext(DbContextOptions<TestDbContext> options) : D
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.AddAsyncomniaOutbox();
+        modelBuilder.AddAsyncomniaDelayedPublishing();
     }
 }
 

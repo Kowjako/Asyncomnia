@@ -1,7 +1,9 @@
 using Asyncomnia.Messaging.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
@@ -33,6 +35,7 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
         builder.UseAdoNet<ITestUnitOfWork>();
 
         AssertSingleScopedWriter(services);
+        AssertSingleScopedDelayedMessageWriter(services);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
@@ -48,6 +51,7 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
         builder.UseAdoNet<ITestUnitOfWork>();
 
         AssertSingleScopedWriter(services);
+        AssertSingleScopedDelayedMessageWriter(services);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
@@ -84,6 +88,17 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
             descriptor => descriptor.ServiceType == typeof(IOutboxWriter));
         Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
         Assert.Equal(typeof(SqlServerOutboxWriter), registration.ImplementationType);
+    }
+
+    private static void AssertSingleScopedDelayedMessageWriter(IServiceCollection services)
+    {
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IDelayedMessageWriter));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(
+            typeof(SqlServerDelayedMessageWriter),
+            registration.ImplementationType);
     }
 
     private static void AssertSingleScopedFactory<TService>(IServiceCollection services)

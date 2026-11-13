@@ -1,10 +1,12 @@
 using System.Data;
 using Asyncomnia.Messaging.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests.TestDoubles;
@@ -37,6 +39,7 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         builder.UseEntityFrameworkCore<TestDbContext>();
 
         AssertEntityFrameworkCoreWriter(services);
+        AssertEntityFrameworkCoreDelayedMessageWriter(services);
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType ==
@@ -56,6 +59,7 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         builder.UseEntityFrameworkCore<TestDbContext>();
 
         AssertEntityFrameworkCoreWriter(services);
+        AssertEntityFrameworkCoreDelayedMessageWriter(services);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
@@ -71,6 +75,7 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         builder.UseSqlServer(Configure);
 
         AssertEntityFrameworkCoreWriter(services);
+        AssertEntityFrameworkCoreDelayedMessageWriter(services);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
@@ -90,6 +95,13 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
             services,
             descriptor => descriptor.ServiceType == typeof(IOutboxWriter));
         Assert.Equal("SqlServerOutboxWriter", writerRegistration.ImplementationType?.Name);
+
+        var delayedWriterRegistration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IDelayedMessageWriter));
+        Assert.Equal(
+            "SqlServerDelayedMessageWriter",
+            delayedWriterRegistration.ImplementationType?.Name);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
@@ -127,6 +139,18 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
         Assert.Equal(
             typeof(EntityFrameworkCoreOutboxWriter<TestDbContext>),
+            registration.ImplementationType);
+    }
+
+    private static void AssertEntityFrameworkCoreDelayedMessageWriter(
+        IServiceCollection services)
+    {
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IDelayedMessageWriter));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(
+            typeof(EntityFrameworkCoreDelayedMessageWriter<TestDbContext>),
             registration.ImplementationType);
     }
 

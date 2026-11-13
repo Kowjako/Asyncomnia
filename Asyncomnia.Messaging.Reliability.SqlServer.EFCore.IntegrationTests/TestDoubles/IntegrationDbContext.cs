@@ -18,5 +18,6 @@ internal sealed class IntegrationDbContext(DbContextOptions<IntegrationDbContext
         });
 
         modelBuilder.AddAsyncomniaOutbox();
+        modelBuilder.AddAsyncomniaDelayedPublishing();
     }
 }
