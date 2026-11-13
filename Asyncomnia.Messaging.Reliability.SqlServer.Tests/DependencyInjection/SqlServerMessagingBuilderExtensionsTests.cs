@@ -1,9 +1,11 @@
 using Asyncomnia.Messaging.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Inbox.Storage;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
@@ -40,6 +42,8 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
         AssertSingleScopedRegistration<IOutboxWriter>(services, nameof(SqlServerOutboxWriter));
         AssertSingleScopedRegistration<IInboxWriter>(services, nameof(SqlServerInboxWriter));
         AssertSingleScopedRegistration<IInboxCleanupStore>(services, nameof(SqlServerInboxCleanupStore));
+        AssertSingleScopedRegistration<IDelayedMessageWriter>(services, nameof(SqlServerDelayedMessageWriter));
+        AssertSingleScopedRegistration<IDelayedMessageStore>(services, nameof(SqlServerDelayedMessageStore));
         AssertSingleScopedRegistration<SqlServerMigrator>(services, nameof(SqlServerMigrator));
         AssertSingleScopedRegistration<IDbTransactionAccessor>(services, "StandaloneDbTransactionAccessor");
         Assert.Single(
