@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Reliability.Inbox;
+using Asyncomnia.Messaging.Reliability.Inbox.Storage;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
@@ -30,6 +31,8 @@ public static class SqlServerMessagingBuilderExtensions
         builder.Services.TryAddScoped<IOutboxWriter, SqlServerOutboxWriter>();
         builder.Services.TryAddScoped<IInboxWriter, SqlServerInboxWriter>();
         builder.Services.TryAddScoped<IDbTransactionAccessor, StandaloneDbTransactionAccessor>();
+
+        builder.Services.TryAddScoped<IInboxCleanupStore, SqlServerInboxCleanupStore>();
 
         return builder;
     }

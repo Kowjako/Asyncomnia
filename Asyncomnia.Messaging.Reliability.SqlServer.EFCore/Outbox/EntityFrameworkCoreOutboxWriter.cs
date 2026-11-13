@@ -13,9 +13,7 @@ internal sealed class EntityFrameworkCoreOutboxWriter<TDbContext> : IOutboxWrite
 
         if (dbContext.Model.FindEntityType(typeof(OutboxEntry)) is null)
         {
-            throw new InvalidOperationException(
-                "Asyncomnia Outbox is not configured in the EF Core model. " +
-                "Call modelBuilder.AddAsyncomniaOutbox() in OnModelCreating.");
+            throw new InvalidOperationException("Asyncomnia Outbox is not configured in the EF Core model. Call modelBuilder.AddAsyncomniaOutbox() in OnModelCreating.");
         }
 
         _outboxEntries = dbContext.Set<OutboxEntry>();
