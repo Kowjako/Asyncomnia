@@ -168,11 +168,11 @@ public sealed class SqlServerInboxIntegrationTests : IAsyncLifetime
         builder.Services
             .AddAsyncomniaMessaging()
             .RegisterEventHandler<InboxOrderCreatedEvent, InboxOrderCreatedEventHandler>()
-            .UseOutbox(outbox =>
-                outbox.UseSqlServer<IIntegrationUnitOfWork>(options =>
-                    options.ConnectionString = _connectionString))
-            .UseInbox(inbox =>
-                inbox.UseSqlServer<IIntegrationUnitOfWork>());
+            .UseSqlServer(options =>
+                options.ConnectionString = _connectionString)
+            .UseAdoNet<IIntegrationUnitOfWork>()
+            .UseOutbox()
+            .UseInbox();
 
         _host = builder.Build();
 

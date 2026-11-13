@@ -1,5 +1,4 @@
 using Asyncomnia.Messaging.DependencyInjection;
-using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,7 +33,7 @@ public sealed class SqlServerOptionsTests
         var services = new ServiceCollection();
         services
             .AddAsyncomniaMessaging()
-            .UseOutbox(outbox => outbox.UseSqlServer(configure));
+            .UseSqlServer(configure);
 
         return services.BuildServiceProvider();
     }

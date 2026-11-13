@@ -33,7 +33,7 @@ internal sealed class SqlServerInboxWriter(IDbTransactionAccessor transactionAcc
         ArgumentNullException.ThrowIfNull(message);
         token.ThrowIfCancellationRequested();
 
-        var tx = _transactionAccessor.CurrentTransaction 
+        var tx = _transactionAccessor.CurrentTransaction
             ?? throw new InvalidOperationException("An active inbox transaction is required");
 
         var connection = tx.Connection 

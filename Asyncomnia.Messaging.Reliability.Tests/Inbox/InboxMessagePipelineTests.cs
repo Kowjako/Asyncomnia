@@ -14,7 +14,7 @@ public sealed class InboxMessagePipelineTests
         var utcNow = new DateTimeOffset(2026, 11, 12, 11, 0, 0, TimeSpan.Zero);
         var message = new TestOutboxEvent("value");
         var context = CreateContext(message);
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -60,7 +60,7 @@ public sealed class InboxMessagePipelineTests
     {
         var message = new TestOutboxCommand("value");
         var context = CreateContext(message);
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -97,7 +97,7 @@ public sealed class InboxMessagePipelineTests
     [Fact]
     public async Task HandleEventAsync_WhenMessageIsDuplicate_SkipsHandlerAndRollsBack()
     {
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -130,7 +130,7 @@ public sealed class InboxMessagePipelineTests
     public async Task HandleEventAsync_WhenWriterThrows_RollsBackAndPropagatesException()
     {
         var expectedException = new InvalidOperationException("Inbox write failed");
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -164,7 +164,7 @@ public sealed class InboxMessagePipelineTests
     public async Task HandleEventAsync_WhenHandlerThrows_RollsBackAndPropagatesException()
     {
         var expectedException = new InvalidOperationException("Handler failed");
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -204,7 +204,7 @@ public sealed class InboxMessagePipelineTests
     public async Task HandleEventAsync_WhenCommitThrows_RollsBackAndPropagatesException()
     {
         var expectedException = new InvalidOperationException("Commit failed");
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var sequence = new MockSequence();
@@ -245,7 +245,7 @@ public sealed class InboxMessagePipelineTests
     [Fact]
     public async Task HandleEventAsync_WhenContextIsNull_DoesNotBeginTransaction()
     {
-        var transaction = new Mock<IInboxTransaction>(MockBehavior.Strict);
+        var transaction = new Mock<IInboundTransaction>(MockBehavior.Strict);
         var writer = new Mock<IInboxWriter>(MockBehavior.Strict);
         var dispatcher = new Mock<IMessageHandlerDispatcher>(MockBehavior.Strict);
         var pipeline = CreatePipeline(
@@ -265,7 +265,7 @@ public sealed class InboxMessagePipelineTests
     [Fact]
     public void Constructor_WithNullDependency_ThrowsArgumentNullException()
     {
-        var transaction = new Mock<IInboxTransaction>().Object;
+        var transaction = new Mock<IInboundTransaction>().Object;
         var writer = new Mock<IInboxWriter>().Object;
         var dispatcher = new Mock<IMessageHandlerDispatcher>().Object;
         var next = new HandlerMessagePipeline(dispatcher);
@@ -282,7 +282,7 @@ public sealed class InboxMessagePipelineTests
     }
 
     private static InboxMessagePipeline CreatePipeline(
-        Mock<IInboxTransaction> transaction,
+        Mock<IInboundTransaction> transaction,
         Mock<IInboxWriter> writer,
         Mock<IMessageHandlerDispatcher> dispatcher,
         DateTimeOffset utcNow)

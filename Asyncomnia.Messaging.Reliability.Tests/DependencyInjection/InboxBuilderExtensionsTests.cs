@@ -28,7 +28,7 @@ public sealed class InboxBuilderExtensionsTests
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseInbox(_ => { });
+        builder.UseInbox();
 
         var pipelineRegistration = Assert.Single(
             services,
@@ -48,8 +48,8 @@ public sealed class InboxBuilderExtensionsTests
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseInbox(_ => { });
-        builder.UseInbox(_ => { });
+        builder.UseInbox();
+        builder.UseInbox();
 
         Assert.Single(
             services,
@@ -60,12 +60,13 @@ public sealed class InboxBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseInbox_WhenConfigureIsNull_ThrowsArgumentNullException()
+    public void UseInbox_WithoutConfiguration_ReturnsSameMessagingBuilder()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        Assert.Throws<ArgumentNullException>(() =>
-            builder.UseInbox(null!));
+        var returnedBuilder = builder.UseInbox();
+
+        Assert.Same(builder, returnedBuilder);
     }
 }
