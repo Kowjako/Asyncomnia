@@ -20,20 +20,20 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Consumer;
 public sealed class RabbitMqMessageConsumerTests
 {
     [Fact]
-    public async Task ConsumeAsync_WhenPipelineSucceeds_MapsEnvelopeAndAcknowledgesMessage()
+    public async Task ConsumeAsync_WhenPipelineSucceeds_PassesInboundContextAndAcknowledgesMessage()
     {
         var messageId = Guid.NewGuid();
         var correlationId = Guid.NewGuid();
         var createdAt = new DateTimeOffset(2026, 11, 7, 15, 30, 0, TimeSpan.Zero);
         var body = new ClientCreatedEvent("Acme");
-        MessageEnvelope<ClientCreatedEvent>? capturedEnvelope = null;
+        InboundMessageContext? capturedContext = null;
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
-            .Callback<MessageEnvelope<ClientCreatedEvent>, CancellationToken>(
-                (envelope, _) => capturedEnvelope = envelope)
+            .Callback<InboundMessageContext, CancellationToken>(
+                (context, _) => capturedContext = context)
             .Returns(Task.CompletedTask);
         await using var provider = CreateProvider(_ => pipeline.Object);
         var errorDependencies = CreateErrorStrategy(deadLetteringEnabled: false);
@@ -55,11 +55,13 @@ public sealed class RabbitMqMessageConsumerTests
             delivery,
             CancellationToken.None);
 
-        Assert.NotNull(capturedEnvelope);
-        Assert.Equal(body, capturedEnvelope.Message);
-        Assert.Equal(messageId, capturedEnvelope.Metadata.MessageId);
-        Assert.Equal(correlationId, capturedEnvelope.Metadata.CorrelationId);
-        Assert.Equal(createdAt, capturedEnvelope.Metadata.CreatedAt);
+        Assert.NotNull(capturedContext);
+        Assert.Equal("events/clients/subscription/test-service", capturedContext.ConsumerId);
+        Assert.Equal(delivery.BasicProperties.Type, capturedContext.ContractType);
+        Assert.Equal(body, capturedContext.Message);
+        Assert.Equal(messageId, capturedContext.Metadata.MessageId);
+        Assert.Equal(correlationId, capturedContext.Metadata.CorrelationId);
+        Assert.Equal(createdAt, capturedContext.Metadata.CreatedAt);
         pipeline.VerifyAll();
         channel.VerifyAll();
         errorDependencies.VerifyNoCalls();
@@ -238,8 +240,8 @@ public sealed class RabbitMqMessageConsumerTests
         cancellationTokenSource.Cancel();
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
                 cancellationTokenSource.Token))
             .Returns(Task.FromCanceled(cancellationTokenSource.Token));
         await using var provider = CreateProvider(_ => pipeline.Object);
@@ -266,8 +268,8 @@ public sealed class RabbitMqMessageConsumerTests
     {
         var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
         pipeline
-            .Setup(x => x.HandleEventAsync(
-                It.IsAny<MessageEnvelope<ClientCreatedEvent>>(),
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         await using var provider = CreateProvider(_ => pipeline.Object);
@@ -296,6 +298,8 @@ public sealed class RabbitMqMessageConsumerTests
         Func<IServiceProvider, IInboundMessagePipeline> pipelineFactory)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IMessageDispatchCatalog>(
+            CreateDispatchCatalog());
         services.AddScoped<IInboundMessagePipeline>(pipelineFactory);
         return services.BuildServiceProvider();
     }
@@ -304,16 +308,20 @@ public sealed class RabbitMqMessageConsumerTests
         ServiceProvider provider,
         RabbitMqConsumeErrorStrategy errorStrategy)
     {
-        var catalog = new MessageDispatchCatalog(
-        [
-            MessageDispatchDescriptorFactory.CreateEvent<ClientCreatedEvent>()
-        ]);
-
         return new RabbitMqMessageConsumer(
             provider.GetRequiredService<IServiceScopeFactory>(),
             new MessageJsonSerializer(),
-            catalog,
+            provider.GetRequiredService<IMessageDispatchCatalog>(),
             errorStrategy);
+    }
+
+    private static MessageDispatchCatalog CreateDispatchCatalog()
+    {
+        return new MessageDispatchCatalog(
+        [
+            MessageDispatchDescriptorFactory
+                .CreateEvent<ClientCreatedEvent>()
+        ]);
     }
 
     private static ErrorStrategyDependencies CreateErrorStrategy(
@@ -350,7 +358,7 @@ public sealed class RabbitMqMessageConsumerTests
                     "client-created-event",
                     messageType ?? typeof(ClientCreatedEvent))
             ],
-            ConsumerSettings = new RabbitMqConsumerSettings(1, 1, 1)
+            Settings = new RabbitMqSubscriptionSettings(false, 1, 1)
         };
     }
 
@@ -405,7 +413,7 @@ public sealed class RabbitMqMessageConsumerTests
         public bool IsDisposed { get; private set; }
 
         public Task HandleEventAsync<TEvent>(
-            MessageEnvelope<TEvent> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TEvent : class, IEvent
         {
@@ -415,7 +423,7 @@ public sealed class RabbitMqMessageConsumerTests
         }
 
         public Task HandleCommandAsync<TCommand>(
-            MessageEnvelope<TCommand> envelope,
+            InboundMessageContext context,
             CancellationToken token = default)
             where TCommand : class, ICommand
         {

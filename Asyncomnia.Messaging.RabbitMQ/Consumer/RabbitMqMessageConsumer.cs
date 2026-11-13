@@ -79,10 +79,12 @@ internal sealed class RabbitMqMessageConsumer(
         var metadata = RabbitMqMessagePropertiesMapper.MapToAsyncomniaProperties(delivery.BasicProperties);
         var message = _messageSerializer.Deserialize(delivery.Body, descriptor.MessageType);
 
+        var context = new InboundMessageContext(subscription.QueueName, contractType, message, metadata);
+
         await using var scope = _scopeFactory.CreateAsyncScope();
 
         var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
-        await descriptor.DispatchAsync(pipeline, message, metadata, token);
+        await descriptor.DispatchAsync(pipeline, context, token);
     }
 
     private static ValueTask ReturnResponseToBrokerAsync(IChannel channel, ulong deliveryTag, AckResponse response, CancellationToken token)

@@ -144,4 +144,5 @@ public sealed class ServiceCollectionExtensionsTests
 
         Assert.NotNull(dispatcher);
     }
+
 }

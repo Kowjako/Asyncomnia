@@ -272,7 +272,7 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
         {
             ExchangeName = queueName.Split("/subscription/")[0],
             QueueName = queueName,
-            ConsumerSettings = new RabbitMqConsumerSettings(1, 1, 1)
+            Settings = new RabbitMqSubscriptionSettings(false, 1, 1)
         };
     }
 }

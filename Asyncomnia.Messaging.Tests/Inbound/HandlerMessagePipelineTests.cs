@@ -9,41 +9,49 @@ namespace Asyncomnia.Messaging.Tests.Inbound;
 public sealed class HandlerMessagePipelineTests
 {
     [Fact]
-    public async Task HandleEventAsync_DelegatesEnvelopeAndCancellationTokenToDispatcher()
+    public async Task HandleEventAsync_CreatesTypedEnvelopeAndDelegatesItToDispatcher()
     {
         var dispatcher = new CapturingMessageHandlerDispatcher();
         var services = CreateServices(dispatcher);
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
         var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
-        var envelope = TestEnvelopeFactory.Create(new TestEvent("value"));
-        using var cts = new CancellationTokenSource();
+        var message = new TestEvent("value");
+        var metadata = new MessageMetadata(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var context = CreateContext(message, metadata);
+        using var cancellation = new CancellationTokenSource();
 
-        await pipeline.HandleEventAsync(envelope, cts.Token);
+        await pipeline.HandleEventAsync<TestEvent>(context, cancellation.Token);
 
-        Assert.Same(envelope, dispatcher.EventEnvelope);
-        Assert.Equal(cts.Token, dispatcher.EventCancellationToken);
+        var envelope = Assert.IsType<MessageEnvelope<TestEvent>>(dispatcher.EventEnvelope);
+        Assert.Same(message, envelope.Message);
+        Assert.Same(metadata, envelope.Metadata);
+        Assert.Equal(cancellation.Token, dispatcher.EventCancellationToken);
     }
 
     [Fact]
-    public async Task HandleCommandAsync_DelegatesEnvelopeAndCancellationTokenToDispatcher()
+    public async Task HandleCommandAsync_CreatesTypedEnvelopeAndDelegatesItToDispatcher()
     {
         var dispatcher = new CapturingMessageHandlerDispatcher();
         var services = CreateServices(dispatcher);
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
         var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
-        var envelope = TestEnvelopeFactory.Create(new TestCommand("value"));
-        using var cts = new CancellationTokenSource();
+        var message = new TestCommand("value");
+        var metadata = new MessageMetadata(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var context = CreateContext(message, metadata);
+        using var cancellation = new CancellationTokenSource();
 
-        await pipeline.HandleCommandAsync(envelope, cts.Token);
+        await pipeline.HandleCommandAsync<TestCommand>(context, cancellation.Token);
 
-        Assert.Same(envelope, dispatcher.CommandEnvelope);
-        Assert.Equal(cts.Token, dispatcher.CommandCancellationToken);
+        var envelope = Assert.IsType<MessageEnvelope<TestCommand>>(dispatcher.CommandEnvelope);
+        Assert.Same(message, envelope.Message);
+        Assert.Same(metadata, envelope.Metadata);
+        Assert.Equal(cancellation.Token, dispatcher.CommandCancellationToken);
     }
 
     [Fact]
-    public async Task HandleEventAsync_WhenEnvelopeIsNull_Throws()
+    public async Task HandleEventAsync_WhenContextIsNull_ThrowsArgumentNullException()
     {
         var dispatcher = new CapturingMessageHandlerDispatcher();
         var services = CreateServices(dispatcher);
@@ -56,7 +64,7 @@ public sealed class HandlerMessagePipelineTests
     }
 
     [Fact]
-    public async Task HandleCommandAsync_WhenEnvelopeIsNull_Throws()
+    public async Task HandleCommandAsync_WhenContextIsNull_ThrowsArgumentNullException()
     {
         var dispatcher = new CapturingMessageHandlerDispatcher();
         var services = CreateServices(dispatcher);
@@ -66,6 +74,15 @@ public sealed class HandlerMessagePipelineTests
 
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => pipeline.HandleCommandAsync<TestCommand>(null!));
+    }
+
+    private static InboundMessageContext CreateContext(IMessage message, MessageMetadata metadata)
+    {
+        return new InboundMessageContext(
+            "tests/subscription",
+            message.GetType().AssemblyQualifiedName!,
+            message,
+            metadata);
     }
 
     private static ServiceCollection CreateServices(IMessageHandlerDispatcher dispatcher)

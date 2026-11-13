@@ -23,13 +23,8 @@ internal sealed class RabbitMqConsumerHostedService(
         {
             foreach (var declaredSubscription in subscriptions)
             {
-                var consumerCount = declaredSubscription.ConsumerSettings.ConsumerCount;
-
-                for (var consumerIndex = 0; consumerIndex < consumerCount; consumerIndex++)
-                {
-                    var consumer = await consumerFactory.StartAsync(declaredSubscription, ct);
-                    _consumers.Add(consumer);
-                }
+                var consumer = await consumerFactory.StartAsync(declaredSubscription, ct);
+                _consumers.Add(consumer);
             }
         }
         catch (Exception startException)

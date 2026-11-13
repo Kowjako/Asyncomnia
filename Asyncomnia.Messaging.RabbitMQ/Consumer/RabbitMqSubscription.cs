@@ -10,5 +10,5 @@ internal sealed record RabbitMqSubscription
 
     public IReadOnlyCollection<RabbitMqBinding> Bindings { get; init; } = [];
 
-    public RabbitMqConsumerSettings ConsumerSettings { get; init; } = null!;
+    public RabbitMqSubscriptionSettings Settings { get; init; } = null!;
 }

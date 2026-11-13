@@ -2,9 +2,9 @@
 
 public interface IInboundMessagePipeline
 {
-    Task HandleEventAsync<TEvent>(MessageEnvelope<TEvent> envelope, CancellationToken token = default)
+    Task HandleEventAsync<TEvent>(InboundMessageContext context, CancellationToken token = default)
         where TEvent : class, IEvent;
 
-    Task HandleCommandAsync<TCommand>(MessageEnvelope<TCommand> envelope, CancellationToken token = default)
+    Task HandleCommandAsync<TCommand>(InboundMessageContext context, CancellationToken token = default)
         where TCommand : class, ICommand;
 }

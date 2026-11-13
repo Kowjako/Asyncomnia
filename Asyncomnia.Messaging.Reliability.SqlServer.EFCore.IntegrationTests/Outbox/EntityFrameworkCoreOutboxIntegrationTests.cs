@@ -83,12 +83,10 @@ public sealed class EntityFrameworkCoreOutboxIntegrationTests : IAsyncLifetime
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseOutbox(outbox =>
-            {
-                outbox.UseSqlServer(options =>
-                    options.ConnectionString = _connectionString);
-                outbox.UseEntityFrameworkCore<IntegrationDbContext>();
-            });
+            .UseSqlServer(options =>
+                options.ConnectionString = _connectionString)
+            .UseEntityFrameworkCore<IntegrationDbContext>()
+            .UseOutbox();
 
         _host = builder.Build();
 

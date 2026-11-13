@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 
-internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options, ILogger<SqlServerMigrator> logger)
+internal sealed class SqlServerMigrator(IOptions<SqlServerOptions> options, ILogger<SqlServerMigrator> logger)
 {
     private const int MaxMigrationLockAttempts = 3;
 
@@ -21,7 +21,7 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOutboxOptions> options
 
     private static readonly TimeSpan MigrationLockRetryDelay = TimeSpan.FromSeconds(2);
 
-    private readonly SqlServerOutboxOptions _options = options.Value;
+    private readonly SqlServerOptions _options = options.Value;
 
     public async Task MigrateAsync(CancellationToken token = default)
     {

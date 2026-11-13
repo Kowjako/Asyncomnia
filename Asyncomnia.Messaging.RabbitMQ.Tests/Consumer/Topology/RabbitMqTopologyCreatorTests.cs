@@ -102,6 +102,36 @@ public sealed class RabbitMqTopologyCreatorTests
     }
 
     [Fact]
+    public async Task DeclareAsync_WithSingleActiveConsumer_DeclaresQueueWithSacArgument()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)],
+            configureOptions: options => options.ConfigureSubscription(
+                "events/clients",
+                subscription => subscription.SingleActiveConsumer = true));
+        SetupChannel(channelFactory, channel);
+        SetupExchangeDeclaration(channel, "events/clients");
+        SetupSingleActiveQueueDeclaration(
+            channel,
+            "events/clients/subscription/test-service");
+        SetupBinding(
+            channel,
+            "events/clients/subscription/test-service",
+            "events/clients",
+            "client-created-event");
+
+        var subscriptions = await creator.DeclareAsync();
+
+        Assert.True(Assert.Single(subscriptions).Settings.SingleActiveConsumer);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
     public async Task DeclareAsync_WhenCancellationIsAlreadyRequested_DoesNotCreateChannel()
     {
         var channelFactory =
@@ -167,16 +197,24 @@ public sealed class RabbitMqTopologyCreatorTests
                 null!));
     }
 
-    private static RabbitMqTopologyCreator CreateCreator(Mock<IRabbitMqChannelFactory> channelFactory,
-        IReadOnlyCollection<Type>? eventTypes = null, IReadOnlyCollection<Type>? commandTypes = null)
+    private static RabbitMqTopologyCreator CreateCreator(
+        Mock<IRabbitMqChannelFactory> channelFactory,
+        IReadOnlyCollection<Type>? eventTypes = null,
+        IReadOnlyCollection<Type>? commandTypes = null,
+        Action<RabbitMqConsumerOptions>? configureOptions = null)
     {
         return new RabbitMqTopologyCreator(
             channelFactory.Object,
-            CreateSubscriptionResolver(eventTypes, commandTypes));
+            CreateSubscriptionResolver(
+                eventTypes,
+                commandTypes,
+                configureOptions));
     }
 
-    private static RabbitMqSubscriptionResolver CreateSubscriptionResolver(IReadOnlyCollection<Type>? eventTypes = null,
-        IReadOnlyCollection<Type>? commandTypes = null)
+    private static RabbitMqSubscriptionResolver CreateSubscriptionResolver(
+        IReadOnlyCollection<Type>? eventTypes = null,
+        IReadOnlyCollection<Type>? commandTypes = null,
+        Action<RabbitMqConsumerOptions>? configureOptions = null)
     {
         var catalog =
             new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
@@ -187,14 +225,16 @@ public sealed class RabbitMqTopologyCreatorTests
             .SetupGet(x => x.CommandTypes)
             .Returns(commandTypes ?? Array.Empty<Type>());
 
+        var options = new RabbitMqConsumerOptions
+        {
+            EndpointName = "test-service"
+        };
+        configureOptions?.Invoke(options);
+
         return new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(
-                new RabbitMqConsumerOptions
-                {
-                    EndpointName = "test-service"
-                }));
+            Options.Create(options));
     }
 
     private static void SetupChannel(Mock<IRabbitMqChannelFactory> channelFactory, Mock<IChannel> channel)
@@ -246,6 +286,33 @@ public sealed class RabbitMqTopologyCreatorTests
                 false,
                 CancellationToken.None))
             .ReturnsAsync(new QueueDeclareOk(queueName, 0, 0));
+    }
+
+    private static void SetupSingleActiveQueueDeclaration(
+        Mock<IChannel> channel,
+        string queueName)
+    {
+        channel
+            .Setup(x => x.QueueDeclareAsync(
+                queueName,
+                true,
+                false,
+                false,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasSingleActiveConsumer(arguments)),
+                false,
+                false,
+                CancellationToken.None))
+            .ReturnsAsync(new QueueDeclareOk(queueName, 0, 0));
+    }
+
+    private static bool HasSingleActiveConsumer(
+        IDictionary<string, object?>? arguments)
+    {
+        return arguments is not null &&
+               arguments.Count == 1 &&
+               arguments.TryGetValue("x-single-active-consumer", out var value) &&
+               value is true;
     }
 
     private static void SetupBinding(Mock<IChannel> channel, string queueName, string exchangeName, string routingKey)

@@ -7,9 +7,9 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Storage;
 
-internal sealed class SqlServerOutboxStore(IOptions<SqlServerOutboxOptions> options) : IOutboxStore
+internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) : IOutboxStore
 {
-    private readonly SqlServerOutboxOptions _options = options.Value;
+    private readonly SqlServerOptions _options = options.Value;
 
     public async Task<IReadOnlyList<ClaimedOutboxMessage>> ClaimAsync(int batchSize, TimeSpan leaseDuration, CancellationToken token = default)
     {
