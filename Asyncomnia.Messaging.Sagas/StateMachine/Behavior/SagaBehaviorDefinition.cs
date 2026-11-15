@@ -6,7 +6,7 @@ public abstract class SagaBehaviorConfiguration<TSagaInstance> where TSagaInstan
 {
     public abstract Type MessageType { get; }
 
-    internal abstract ValueTask ExecuteAsync(TSagaInstance body, object message, CancellationToken token);
+    internal abstract ValueTask ExecuteAsync(TSagaInstance body, object message, IServiceProvider serviceProvider, CancellationToken token);
 }
 
 public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorConfiguration<TSagaInstance> 
@@ -219,7 +219,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
         return this;
     }
 
-    internal override async ValueTask ExecuteAsync(TSagaInstance body, object message, CancellationToken token)
+    internal override async ValueTask ExecuteAsync(TSagaInstance body, object message, IServiceProvider serviceProvider, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(body);
         ArgumentNullException.ThrowIfNull(message);
@@ -230,12 +230,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
                 $"Behavior for message type '{typeof(TMessage).FullName}' cannot execute a message of type '{message.GetType().FullName}'.", nameof(message));
         }
 
-        var sagaContext = new SagaContext<TSagaInstance, TMessage>
-        {
-            Message = typedMessage,
-            State = body,
-            CancellationToken = token
-        };
+        var sagaContext = new SagaContext<TSagaInstance, TMessage>(typedMessage, body, token, serviceProvider);
 
         foreach (var activity in _activities)
         {
