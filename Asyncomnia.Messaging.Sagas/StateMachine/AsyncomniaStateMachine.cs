@@ -10,6 +10,7 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
     private readonly Dictionary<BehaviorKey, SagaBehaviorConfiguration<TSagaInstance>> _behaviors = new();
 
     public IReadOnlyList<State> States => _states.Values.ToArray();
+    public IReadOnlyList<Type> MessageTypes => _events.Keys.ToArray();
 
     protected AsyncomniaStateMachine()
     {
