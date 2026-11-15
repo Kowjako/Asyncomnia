@@ -601,7 +601,7 @@ public sealed class SagaBehaviorConfigurationTests
 
     private static SagaEvent<TestEvent> CreateSagaEvent()
     {
-        return new SagaEvent<TestEvent>(message => message.SagaId);
+        return new SagaEvent<TestEvent>((message, _) => message.SagaId);
     }
 
     private static Task ExecuteAsync(

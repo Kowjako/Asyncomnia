@@ -3,30 +3,31 @@
 public interface ISagaEvent
 {
     Type Type { get; }
-    Guid GetCorrelationId(object message);
+    Guid GetCorrelationId(object message, MessageMetadata metadata);
 }
 
 public sealed class SagaEvent<TMessage> : ISagaEvent where TMessage: class, IMessage
 {
     public Type Type => typeof(TMessage);
 
-    private readonly Func<TMessage, Guid> _correlateByIdSelector;
+    private readonly Func<TMessage, MessageMetadata, Guid> _correlationIdSelector;
 
-    internal SagaEvent(Func<TMessage, Guid> correlateByIdSelector)
+    internal SagaEvent(Func<TMessage, MessageMetadata, Guid> correlationIdSelector)
     {
-        _correlateByIdSelector = correlateByIdSelector ?? throw new ArgumentNullException(nameof(correlateByIdSelector));
+        _correlationIdSelector = correlationIdSelector ?? throw new ArgumentNullException(nameof(correlationIdSelector));
     }
 
-    public Guid GetCorrelationId(object message)
+    public Guid GetCorrelationId(object message, MessageMetadata metadata)
     {
         ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(metadata);
 
         if (message is not TMessage typedMessage)
         {
             throw new ArgumentException($"Expected message type '{typeof(TMessage).FullName}', but received '{message.GetType().FullName}'.", nameof(message));
         }
 
-        var correlationId = _correlateByIdSelector(typedMessage);
+        var correlationId = _correlationIdSelector(typedMessage, metadata);
 
         if (correlationId == Guid.Empty)
         {

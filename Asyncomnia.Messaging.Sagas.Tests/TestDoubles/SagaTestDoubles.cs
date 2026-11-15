@@ -10,6 +10,8 @@ internal sealed record SecondTestEvent(Guid SagaId) : IEvent;
 
 internal sealed record TestCommand(Guid SagaId, string Value = "value") : ICommand;
 
+internal sealed record ScheduledTimeout : IEvent;
+
 internal sealed class TestSagaInstance : AsyncomniaSagaInstance
 {
     public bool Condition { get; set; }
@@ -56,10 +58,12 @@ internal sealed class TestServiceProvider : IServiceProvider
 
     public CapturingEventPublisher EventPublisher { get; } = new();
     public CapturingCommandSender CommandSender { get; } = new();
+    public CapturingMessageScheduler MessageScheduler { get; } = new();
 
     public TestServiceProvider(
         bool includeEventPublisher = true,
-        bool includeCommandSender = true)
+        bool includeCommandSender = true,
+        bool includeMessageScheduler = false)
     {
         if (includeEventPublisher)
         {
@@ -69,6 +73,11 @@ internal sealed class TestServiceProvider : IServiceProvider
         if (includeCommandSender)
         {
             Add<ICommandSender>(CommandSender);
+        }
+
+        if (includeMessageScheduler)
+        {
+            Add<IMessageScheduler>(MessageScheduler);
         }
     }
 
@@ -124,6 +133,62 @@ internal sealed class CapturingCommandSender : ICommandSender
         Calls++;
 
         return Task.CompletedTask;
+    }
+}
+
+internal sealed class CapturingMessageScheduler : IMessageScheduler
+{
+    public Guid ScheduleId { get; set; } = Guid.NewGuid();
+    public bool CancelResult { get; set; } = true;
+    public object? ScheduledMessage { get; private set; }
+    public DateTimeOffset? DeliverAt { get; private set; }
+    public TimeSpan? Delay { get; private set; }
+    public MessageDispatchOptions? Options { get; private set; }
+    public CancellationToken CancellationToken { get; private set; }
+    public Guid? CancelledScheduleId { get; private set; }
+    public CancellationToken CancellationTokenAtCancellation { get; private set; }
+    public int ScheduleCalls { get; private set; }
+    public int CancelCalls { get; private set; }
+
+    public Task<Guid> ScheduleAsync<TMessage>(
+        TMessage message,
+        DateTimeOffset deliverAt,
+        MessageDispatchOptions? options = null,
+        CancellationToken token = default)
+        where TMessage : class, IMessage
+    {
+        ScheduledMessage = message;
+        DeliverAt = deliverAt;
+        Options = options;
+        CancellationToken = token;
+        ScheduleCalls++;
+
+        return Task.FromResult(ScheduleId);
+    }
+
+    public Task<Guid> ScheduleAsync<TMessage>(
+        TMessage message,
+        TimeSpan delay,
+        MessageDispatchOptions? options = null,
+        CancellationToken token = default)
+        where TMessage : class, IMessage
+    {
+        ScheduledMessage = message;
+        Delay = delay;
+        Options = options;
+        CancellationToken = token;
+        ScheduleCalls++;
+
+        return Task.FromResult(ScheduleId);
+    }
+
+    public Task<bool> CancelAsync(Guid scheduleId, CancellationToken token = default)
+    {
+        CancelledScheduleId = scheduleId;
+        CancellationTokenAtCancellation = token;
+        CancelCalls++;
+
+        return Task.FromResult(CancelResult);
     }
 }
 

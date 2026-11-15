@@ -33,13 +33,63 @@ public sealed class SagaContext<TSagaInstance, TMessage> where TSagaInstance : A
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        return _commandSender.SendAsync(command, options, CancellationToken);
+        return _commandSender.SendAsync(command, ResolveDispatchOptions(options), CancellationToken);
     }
 
     public Task PublishAsync<TEvent>(TEvent @event, MessageDispatchOptions? options = null) where TEvent : class, IEvent
     {
         ArgumentNullException.ThrowIfNull(@event);
 
-        return _eventPublisher.PublishAsync(@event, options, CancellationToken);
+        return _eventPublisher.PublishAsync(@event, ResolveDispatchOptions(options), CancellationToken);
+    }
+
+    public Task<Guid> ScheduleAsync<TScheduledMessage>(TScheduledMessage message, TimeSpan delay, MessageDispatchOptions? options = null)
+        where TScheduledMessage: class, IMessage
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return GetMessageScheduler().ScheduleAsync(message, delay, ResolveDispatchOptions(options), CancellationToken);
+    }
+
+    public Task<Guid> ScheduleAsync<TScheduledMessage>(TScheduledMessage message, DateTimeOffset deliverAt, MessageDispatchOptions? options = null)
+        where TScheduledMessage : class, IMessage
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return GetMessageScheduler().ScheduleAsync(message, deliverAt, ResolveDispatchOptions(options), CancellationToken);
+    }
+
+    public Task<bool> CancelScheduledMessageAsync(Guid scheduleId)
+    {
+        if (scheduleId == Guid.Empty)
+        {
+            throw new ArgumentException("Schedule ID cannot be empty", nameof(scheduleId));
+        }
+
+        return GetMessageScheduler().CancelAsync(scheduleId, CancellationToken);
+    }
+
+    private MessageDispatchOptions ResolveDispatchOptions(MessageDispatchOptions? options)
+    {
+        if (options?.CorrelationId is not null)
+        {
+            return options;
+        }
+
+        if (State.CorrelationId == Guid.Empty)
+        {
+            throw new InvalidOperationException($"Saga instance '{typeof(TSagaInstance).FullName}' must have a correlation ID before dispatching messages.");
+        }
+
+        return (options ?? new MessageDispatchOptions()) with
+        {
+            CorrelationId = State.CorrelationId
+        };
+    }
+
+    private IMessageScheduler GetMessageScheduler()
+    {
+        return Services.GetService(typeof(IMessageScheduler)) as IMessageScheduler
+            ?? throw new InvalidOperationException($"Required service '{typeof(IMessageScheduler).FullName}' is not registered. Configure delayed publishing by calling UseDelayedPublishing().");
     }
 }
