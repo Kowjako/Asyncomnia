@@ -14,4 +14,5 @@
   <Project Path="Asyncomnia.Messaging/Asyncomnia.Messaging.csproj" Id="e03746cb-e2ae-49c1-82a0-c366498e19f7" />
   <Project Path="Asyncomnia.Messaging.Reliability.SqlServer.EFCore/Asyncomnia.Messaging.Reliability.SqlServer.EFCore.csproj" Id="c348f0fa-7635-466e-bead-7990c03a6505" />
   <Project Path="Asyncomnia.Messaging.Sagas/Asyncomnia.Messaging.Sagas.csproj" Id="932a314f-6777-4fbc-940a-3cbcbaf36349" />
+  <Project Path="Asyncomnia.Messaging.Sagas.Tests/Asyncomnia.Messaging.Sagas.Tests.csproj" Id="e8317051-38d4-47fb-bd9b-80452dfc7081" />
 </Solution>
