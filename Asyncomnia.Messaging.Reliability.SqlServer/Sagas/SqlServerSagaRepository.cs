@@ -5,10 +5,11 @@ using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 using Asyncomnia.Messaging.Sagas.Persistence;
 using Asyncomnia.Messaging.Sagas.StateMachine;
+using Microsoft.Data.SqlClient;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Sagas;
 
-internal class SqlServerSagaRepository<TSagaInstance>(IDbTransactionAccessor dbTransactionAccessor) 
+internal sealed class SqlServerSagaRepository<TSagaInstance>(IDbTransactionAccessor dbTransactionAccessor) 
     : ISagaRepository<TSagaInstance> where TSagaInstance : AsyncomniaSagaInstance
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -21,6 +22,23 @@ internal class SqlServerSagaRepository<TSagaInstance>(IDbTransactionAccessor dbT
     private const string SelectForUpdateSql = $@"
         SELECT [CurrentState], [DataJson]
         FROM {SqlServerSagaDefaults.QualifiedTableName} WITH (UPDLOCK, ROWLOCK)
+        WHERE [SagaType] = @SagaType AND [CorrelationId] = @CorrelationId";
+
+    private const string InsertSql = $@"
+        INSERT INTO {SqlServerSagaDefaults.QualifiedTableName}
+        (
+            [SagaType], [CorrelationId], [CurrentState], [DataJson]
+        )
+        VALUES
+        (
+            @SagaType, @CorrelationId, @CurrentState, @DataJson
+        )";
+
+    private const string UpdateSql = $@"
+        UPDATE {SqlServerSagaDefaults.QualifiedTableName}
+        SET [CurrentState] = @CurrentState,
+            [DataJson] = @DataJson,
+            [UpdatedAt] = SYSUTCDATETIME()
         WHERE [SagaType] = @SagaType AND [CorrelationId] = @CorrelationId";
 
     public async Task<TSagaInstance?> GetForUpdateAsync(Guid correlationId, CancellationToken token)
@@ -66,14 +84,66 @@ internal class SqlServerSagaRepository<TSagaInstance>(IDbTransactionAccessor dbT
         return instance;
     }
 
-    public Task<bool> TryInsertAsync(TSagaInstance instance, CancellationToken token)
+    public async Task<bool> TryInsertAsync(TSagaInstance instance, CancellationToken token)
     {
-        throw new NotImplementedException();
+        ValidateInstance(instance);
+        token.ThrowIfCancellationRequested();
+
+        var dataJson = JsonSerializer.Serialize(instance, SerializerOptions);
+        var (connection, transaction) = GetActiveTransaction();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = InsertSql;
+        command.Transaction = transaction;
+
+        AddParameter(command, "@SagaType", DbType.String, SagaType, 1000);
+        AddParameter(command, "@CorrelationId", DbType.Guid, instance.CorrelationId);
+        AddParameter(command, "@CurrentState", DbType.String, instance.CurrentState, 255);
+        AddParameter(command, "@DataJson", DbType.String, dataJson, -1);
+
+        if (command is not DbCommand dbCommand)
+        {
+            throw new InvalidOperationException("The database command must support asynchronous execution.");
+        }
+
+        try
+        {
+            await dbCommand.ExecuteNonQueryAsync(token);
+            return true;
+        }
+        catch (SqlException exception) when (IsSagaPrimaryKeyViolation(exception))
+        {
+            return false;
+        }
     }
 
-    public Task UpdateAsync(TSagaInstance instance, CancellationToken token)
+    public async Task UpdateAsync(TSagaInstance instance, CancellationToken token)
     {
-        throw new NotImplementedException();
+        ValidateInstance(instance);
+        token.ThrowIfCancellationRequested();
+
+        var dataJson = JsonSerializer.Serialize(instance, SerializerOptions);
+        var (connection, transaction) = GetActiveTransaction();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = UpdateSql;
+        command.Transaction = transaction;
+
+        AddParameter(command, "@SagaType", DbType.String, SagaType, 1000);
+        AddParameter(command, "@CorrelationId", DbType.Guid, instance.CorrelationId);
+        AddParameter(command, "@CurrentState", DbType.String, instance.CurrentState, 255);
+        AddParameter(command, "@DataJson", DbType.String, dataJson, -1);
+
+        if (command is not DbCommand dbCommand)
+        {
+            throw new InvalidOperationException("The database command must support asynchronous execution.");
+        }
+
+        var affectedRows = await dbCommand.ExecuteNonQueryAsync(token);
+        if (affectedRows != 1)
+        {
+            throw new InvalidOperationException($"Saga instance '{SagaType}' with correlation ID '{instance.CorrelationId}' does not exist.");
+        }
     }
 
     private (IDbConnection Connection, IDbTransaction Transaction) GetActiveTransaction()
@@ -118,5 +188,26 @@ internal class SqlServerSagaRepository<TSagaInstance>(IDbTransactionAccessor dbT
         }
 
         command.Parameters.Add(parameter);
+    }
+
+    private static void ValidateInstance(TSagaInstance instance)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+
+        if (instance.CorrelationId == Guid.Empty)
+        {
+            throw new ArgumentException("Saga instance correlation ID cannot be empty.", nameof(instance));
+        }
+
+        if (string.IsNullOrWhiteSpace(instance.CurrentState))
+        {
+            throw new ArgumentException("Saga instance current state cannot be empty.", nameof(instance));
+        }
+    }
+
+    private static bool IsSagaPrimaryKeyViolation(SqlException exception)
+    {
+        return exception.Number == 2627 &&
+               exception.Message.Contains("PK_Saga", StringComparison.OrdinalIgnoreCase);
     }
 }

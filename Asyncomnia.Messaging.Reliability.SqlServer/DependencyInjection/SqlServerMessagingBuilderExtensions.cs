@@ -9,7 +9,9 @@ using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Sagas;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
+using Asyncomnia.Messaging.Sagas.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -39,6 +41,10 @@ public static class SqlServerMessagingBuilderExtensions
 
         builder.Services.TryAddScoped<IDelayedMessageWriter, SqlServerDelayedMessageWriter>();
         builder.Services.TryAddScoped<IDelayedMessageStore, SqlServerDelayedMessageStore>();
+
+        // open generic registration, when someone will ask for ISagaRepository<T> .net will automatically
+        // close generic and will return appropriate class
+        builder.Services.TryAddScoped(typeof(ISagaRepository<>), typeof(SqlServerSagaRepository<>));
 
         return builder;
     }

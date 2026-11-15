@@ -8,7 +8,7 @@ BEGIN
 
         [DataJson] nvarchar(max) NOT NULL,
         [CreatedAt] datetimeoffset(7) NOT NULL CONSTRAINT [DF_Saga_CreatedAt] DEFAULT (SYSUTCDATETIME()),
-        [UpdatedAt] datetimeoffset(7) NOT NULL CONSTRAINT [DF_Saga_UpdatedAt]  DEFAULT (SYSUTCDATETIME()),
+        [UpdatedAt] datetimeoffset(7) NOT NULL CONSTRAINT [DF_Saga_UpdatedAt] DEFAULT (SYSUTCDATETIME()),
 
         CONSTRAINT [PK_Saga] PRIMARY KEY CLUSTERED
         (
