@@ -10,22 +10,21 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
     private readonly Dictionary<BehaviorKey, SagaBehaviorConfiguration<TSagaInstance>> _behaviors = new();
 
     public IReadOnlyList<State> States => _states.Values.ToArray();
-    public IReadOnlyList<ISagaEvent> Events => _events.Values.ToArray();
 
-    public AsyncomniaStateMachine()
+    protected AsyncomniaStateMachine()
     {
         RegisterState(Configuration.State.Initial);
         RegisterState(Configuration.State.Final);
     }
 
-    public State State(string name)
+    protected State State(string name)
     {
         var state = new State(name);
         RegisterState(state);
         return state;
     }
 
-    public SagaEvent<TMessage> Event<TMessage>(Action<SagaEventConfiguration<TMessage>> configuration) where TMessage: class, IMessage
+    protected SagaEvent<TMessage> Event<TMessage>(Action<SagaEventConfiguration<TMessage>> configuration) where TMessage: class, IMessage
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -33,7 +32,8 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
 
         if (_events.ContainsKey(eventType))
         {
-            throw new InvalidOperationException("Event already registered");
+            throw new InvalidOperationException(
+                $"State machine '{GetType().FullName}' already contains an event for message type '{eventType.FullName}'.");
         }
 
         var sagaEventConfiguration = new SagaEventConfiguration<TMessage>();
@@ -46,55 +46,66 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
         return sagaEvent;
     }
 
-    public void Initially(params SagaBehaviorConfiguration<TSagaInstance>[]  behaviors)
+    protected void Initially(params SagaBehaviorConfiguration<TSagaInstance>[]  behaviors)
     {
        RegisterBehaviors(Configuration.State.Initial, behaviors);
     }
 
-    public void During(State state, params SagaBehaviorConfiguration<TSagaInstance>[] behaviors)
+    protected void During(State state, params SagaBehaviorConfiguration<TSagaInstance>[] behaviors)
     {
+        ArgumentNullException.ThrowIfNull(state);
+
         if (!_states.ContainsKey(state.Name))
         {
-            throw new InvalidOperationException();
+            throw new InvalidOperationException(
+                $"State '{state.Name}' is not registered in state machine '{GetType().FullName}'. Register the state before configuring its behaviors.");
         }
 
         RegisterBehaviors(state, behaviors);
     }
 
-    public bool TryGetBehavior(string currentState, object message, out SagaBehaviorConfiguration<TSagaInstance>? behavior)
+    protected SagaBehaviorConfiguration<TSagaInstance, TMessage> When<TMessage>(SagaEvent<TMessage> @event) where TMessage : class, IMessage
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(currentState);
-        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(@event);
 
-        var behaviorKey = new BehaviorKey(new State(currentState), message.GetType());
-
-        if (_behaviors.ContainsKey(behaviorKey))
+        if (!_events.ContainsKey(typeof(TMessage)))
         {
-            behavior = _behaviors[behaviorKey];
-            return true;
+            throw new InvalidOperationException(
+                $"Event for message type '{typeof(TMessage).FullName}' is not registered in state machine '{GetType().FullName}'.");
         }
-        else
-        {
-            behavior = default;
-            return false;
-        }
-    }
 
-    public SagaBehaviorConfiguration<TSagaInstance, TMessage> When<TMessage>(SagaEvent<TMessage> @event) where TMessage: class, IMessage
-    {
-        if (!_events.ContainsKey(typeof(TMessage)) || !ReferenceEquals(@event, _events[typeof(TMessage)]))
+        if (!ReferenceEquals(@event, _events[typeof(TMessage)]))
         {
-            throw new InvalidOperationException();
+            throw new InvalidOperationException(
+                $"The provided event for message type '{typeof(TMessage).FullName}' does not belong to state machine '{GetType().FullName}'.");
         }
 
         return new SagaBehaviorConfiguration<TSagaInstance, TMessage>(@event, States);
+    }
+
+    internal bool TryGetBehavior(string currentState, Type messageType, out SagaBehaviorConfiguration<TSagaInstance>? behavior)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentState);
+        ArgumentNullException.ThrowIfNull(messageType);
+
+        var behaviorKey = new BehaviorKey(currentState, messageType);
+
+        return _behaviors.TryGetValue(behaviorKey, out behavior);
+    }
+
+    internal bool TryGetEvent(Type messageType, out ISagaEvent? sagaEvent)
+    {
+        ArgumentNullException.ThrowIfNull(messageType);
+
+        return _events.TryGetValue(messageType, out sagaEvent);
     }
 
     private void RegisterState(State state)
     {
         if (_states.TryGetValue(state.Name, out var existingState) && existingState is not null)
         {
-            throw new InvalidOperationException($"Saga {GetType().Name} already has state '{state.Name}' registered");
+            throw new InvalidOperationException(
+                $"State machine '{GetType().FullName}' already contains a state named '{state.Name}'.");
         }
 
         _states[state.Name] = state;
@@ -105,15 +116,21 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(definitions);
 
+        if (definitions.Any(x => x is null))
+        {
+            throw new ArgumentException($"Behavior collection for state '{state.Name}' cannot contain null elements", nameof(definitions));
+        }
+
         foreach (var definition in definitions)
         {
             // Tie key (state + event) to list of definied activities.
             // So we can have key for Initial + Event1, Initial + Event2 etc.
-            var key = new BehaviorKey(state, definition.MessageType);
+            var key = new BehaviorKey(state.Name, definition.MessageType);
 
             if (!_behaviors.TryAdd(key, definition))
             {
-                throw new InvalidOperationException($"Behavior for state '{state.Name}' and message '{definition.MessageType.Name}' is already registered in saga '{GetType().Name}'.");
+                throw new InvalidOperationException(
+                    $"State machine '{GetType().FullName}' already contains a behavior for message type '{definition.MessageType.FullName}' in state '{state.Name}'.");
             }
         }
     }

@@ -10,11 +10,11 @@ public sealed class SagaEvent<TMessage> : ISagaEvent where TMessage: class, IMes
 {
     public Type Type => typeof(TMessage);
 
-    private Func<TMessage, Guid> _correlateByIdSelector = null!;
+    private readonly Func<TMessage, Guid> _correlateByIdSelector;
 
     internal SagaEvent(Func<TMessage, Guid> correlateByIdSelector)
     {
-        _correlateByIdSelector = correlateByIdSelector;
+        _correlateByIdSelector = correlateByIdSelector ?? throw new ArgumentNullException(nameof(correlateByIdSelector));
     }
 
     public Guid GetCorrelationId(object message)
@@ -23,14 +23,14 @@ public sealed class SagaEvent<TMessage> : ISagaEvent where TMessage: class, IMes
 
         if (message is not TMessage typedMessage)
         {
-            throw new ArgumentException($"Expected message of type {typeof(TMessage).FullName}', but received '{message.GetType().FullName}'",  nameof(message));
+            throw new ArgumentException($"Expected message type '{typeof(TMessage).FullName}', but received '{message.GetType().FullName}'.", nameof(message));
         }
 
         var correlationId = _correlateByIdSelector(typedMessage);
 
         if (correlationId == Guid.Empty)
         {
-            throw new InvalidOperationException($"Event '{Type}' returned an empty CorrelationId.");
+            throw new InvalidOperationException($"Correlation selector for event '{typeof(TMessage).FullName}' returned Guid.Empty.");
         }
 
         return correlationId;

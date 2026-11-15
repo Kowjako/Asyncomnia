@@ -11,11 +11,12 @@ public sealed class SagaEventConfiguration<TMessage> where TMessage: class, IMes
         return this;
     }
 
-    public SagaEvent<TMessage> Build()
+    internal SagaEvent<TMessage> Build()
     {
         if (_correlationIdSelector == null)
         {
-            throw new InvalidOperationException($"CorrelateById function is not configured for event {typeof(TMessage)}");
+            throw new InvalidOperationException(
+                $"Event '{typeof(TMessage).FullName}' must configure CorrelateById before it can be registered.");
         }
 
         return new SagaEvent<TMessage>(_correlationIdSelector);

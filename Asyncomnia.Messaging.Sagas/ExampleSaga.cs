@@ -58,6 +58,6 @@ public class ExampleSaga : AsyncomniaStateMachine<ExampleBody>
         During(PaymentReceived,
             When(PaymentStartedEvent)
                 .If(ctx => ctx.State.Amount > 0,
-                        builder => builder.TransitionTo(PaymentReceived));
+                        builder => builder.TransitionTo(PaymentReceived)));
     }
 }
