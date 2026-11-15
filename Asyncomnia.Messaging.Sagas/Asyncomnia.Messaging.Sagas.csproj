@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Asyncomnia.Messaging.Abstractions\Asyncomnia.Messaging.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>
