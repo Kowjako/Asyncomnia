@@ -1,4 +1,5 @@
-﻿using Asyncomnia.Messaging.Dispatching;
+﻿using System.Collections.Concurrent;
+using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
@@ -27,6 +28,9 @@ internal sealed class RabbitMqMessageConsumer(
     private readonly RabbitMqConsumeErrorStrategy _errorStrategy = errorStrategy
         ?? throw new ArgumentNullException(nameof(errorStrategy));
 
+    // we are using class as key, so use referenceEqualityComparer to distinguish instances.
+    private readonly ConcurrentDictionary<IChannel, SemaphoreSlim> _channelLocks = new(ReferenceEqualityComparer.Instance);
+
     public async Task ConsumeAsync(IChannel channel, RabbitMqSubscription subscription, BasicDeliverEventArgs delivery, CancellationToken token)
     {
         var context = new RabbitMqConsumeContext(
@@ -52,9 +56,24 @@ internal sealed class RabbitMqMessageConsumer(
             response = await _errorStrategy.HandleErrorAsync(context, ex, token);
         }
 
-        // ACK/NACK after try-catch, so if message will be handled correctly, but BasicAck will fail
-        // we will not publish message to DLQ
-        await ReturnResponseToBrokerAsync(channel, delivery.DeliveryTag, response, CancellationToken.None);
+        // RabbitMQ consumer callbacks may run concurrently when dispatcher concurrency
+        // is greater than one (see CreateChannelOptions.consumerDispatchConcurrency)
+        // The .NET client requires acknowledgements performed on
+        // the same channel to be serialized, so ACK/NACK operations share a per-channel gate.
+        var @lock = _channelLocks.GetOrAdd(channel, _ => new SemaphoreSlim(1, 1));
+
+        // pass none token, so when token will throw OperationCancelledException we ensure to send response to broker
+        await @lock.WaitAsync(CancellationToken.None);
+        try
+        {
+            // ACK/NACK after try-catch, so if message will be handled correctly, but BasicAck will fail
+            // we will not publish message to DLQ
+            await ReturnResponseToBrokerAsync(channel, delivery.DeliveryTag, response, CancellationToken.None);
+        }
+        finally
+        {
+            @lock.Release();
+        }
     }
 
     private async Task ProcessAsync(BasicDeliverEventArgs delivery, RabbitMqSubscription subscription, CancellationToken token)
