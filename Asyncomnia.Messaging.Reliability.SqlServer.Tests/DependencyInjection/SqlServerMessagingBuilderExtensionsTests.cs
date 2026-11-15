@@ -10,7 +10,10 @@ using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Sagas;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
+using Asyncomnia.Messaging.Sagas.Persistence;
+using Asyncomnia.Messaging.Sagas.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -46,9 +49,27 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
         AssertSingleScopedRegistration<IDelayedMessageStore>(services, nameof(SqlServerDelayedMessageStore));
         AssertSingleScopedRegistration<SqlServerMigrator>(services, nameof(SqlServerMigrator));
         AssertSingleScopedRegistration<IDbTransactionAccessor>(services, "StandaloneDbTransactionAccessor");
+        AssertSingleScopedOpenGenericRegistration(
+            services,
+            typeof(ISagaRepository<>),
+            typeof(SqlServerSagaRepository<>));
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<SqlServerOptions>));
+    }
+
+    [Fact]
+    public void UseSqlServer_RegistersClosedSagaRepositoryFromOpenGenericRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddAsyncomniaMessaging().UseSqlServer(Configure);
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var repository = scope.ServiceProvider
+            .GetRequiredService<ISagaRepository<DependencyInjectionTestSaga>>();
+
+        Assert.IsType<SqlServerSagaRepository<DependencyInjectionTestSaga>>(repository);
     }
 
     [Fact]
@@ -78,4 +99,19 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
         Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
         Assert.Equal(implementationTypeName, registration.ImplementationType?.Name);
     }
+
+    private static void AssertSingleScopedOpenGenericRegistration(
+        IServiceCollection services,
+        Type serviceType,
+        Type implementationType)
+    {
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == serviceType);
+
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(implementationType, registration.ImplementationType);
+    }
+
+    private sealed class DependencyInjectionTestSaga : AsyncomniaSagaInstance;
 }
