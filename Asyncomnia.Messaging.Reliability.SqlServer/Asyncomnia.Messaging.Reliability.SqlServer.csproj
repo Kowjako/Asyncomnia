@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Asyncomnia.Messaging.Reliability\Asyncomnia.Messaging.Reliability.csproj" />
+    <ProjectReference Include="..\Asyncomnia.Messaging.Sagas\Asyncomnia.Messaging.Sagas.csproj" />
   </ItemGroup>
 
   <ItemGroup>
