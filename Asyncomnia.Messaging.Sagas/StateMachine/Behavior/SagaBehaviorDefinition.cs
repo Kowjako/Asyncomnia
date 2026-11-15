@@ -2,11 +2,6 @@
 
 namespace Asyncomnia.Messaging.Sagas.StateMachine.Behavior;
 
-public class TransitionConfigurationState
-{
-    public bool TransitionConfigured { get; set; } = false;
-}
-
 public abstract class SagaBehaviorConfiguration<TSagaInstance> where TSagaInstance : AsyncomniaSagaInstance
 {
     public abstract Type MessageType { get; }
@@ -19,23 +14,19 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
     where TMessage: class, IMessage
 {
     private readonly List<Func<SagaContext<TSagaInstance, TMessage>, ValueTask>> _activities = [];
-    private TransitionConfigurationState _transitionConfigurationState;
 
     public override Type MessageType => typeof(TMessage);
 
     private readonly SagaEvent<TMessage> _sagaEvent;
     private readonly IReadOnlyList<State> _registeredStates;
 
-    internal SagaBehaviorConfiguration(SagaEvent<TMessage> sagaEvent,
-        IReadOnlyList<State> registeredStates,
-        TransitionConfigurationState? transitionConfigurationState = null)
+    internal SagaBehaviorConfiguration(SagaEvent<TMessage> sagaEvent, IReadOnlyList<State> registeredStates)
     {
         ArgumentNullException.ThrowIfNull(sagaEvent);
         ArgumentNullException.ThrowIfNull(registeredStates);
 
         _sagaEvent = sagaEvent;
         _registeredStates = registeredStates;
-        _transitionConfigurationState = transitionConfigurationState ?? new() { TransitionConfigured = false};
     }
 
     public IReadOnlyList<Func<SagaContext<TSagaInstance, TMessage>, ValueTask>> Activities => _activities;
@@ -74,7 +65,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var actionBuilder = action(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
+        var actionBuilder = action(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
 
         _activities.Add(async ctx =>
         {
@@ -99,7 +90,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var actionBuilder = action(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
+        var actionBuilder = action(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
 
         _activities.Add(async ctx =>
         {
@@ -126,8 +117,8 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
         ArgumentNullException.ThrowIfNull(elseAction);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var ifActionBuilder = ifAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
-        var elseActionBuilder = elseAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
+        var ifActionBuilder = ifAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
+        var elseActionBuilder = elseAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
 
         _activities.Add(async ctx =>
         {
@@ -162,8 +153,8 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
         ArgumentNullException.ThrowIfNull(elseAction);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var ifActionBuilder = ifAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
-        var elseActionBuilder = elseAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates, _transitionConfigurationState));
+        var ifActionBuilder = ifAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
+        var elseActionBuilder = elseAction(new SagaBehaviorConfiguration<TSagaInstance, TMessage>(_sagaEvent, _registeredStates));
 
         _activities.Add(async ctx =>
         {
@@ -196,8 +187,6 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
             throw new InvalidOperationException();
         }
 
-        EnsureTransitionNotConfigured();
-
         _activities.Add(ctx =>
         {
             ctx.CancellationToken.ThrowIfCancellationRequested();
@@ -205,15 +194,11 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
             return ValueTask.CompletedTask;
         });
 
-        _transitionConfigurationState.TransitionConfigured = true;
-
         return this;
     }
 
     public SagaBehaviorConfiguration<TSagaInstance, TMessage> Finalize()
     {
-        EnsureTransitionNotConfigured();
-
         _activities.Add(ctx =>
         {
             ctx.CancellationToken.ThrowIfCancellationRequested();
@@ -221,17 +206,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
             return ValueTask.CompletedTask;
         });
 
-        _transitionConfigurationState.TransitionConfigured = true;
-
         return this;
-    }
-
-    private void EnsureTransitionNotConfigured()
-    {
-        if (_transitionConfigurationState.TransitionConfigured)
-        {
-            throw new InvalidOperationException($"Behavior for message '{typeof(TMessage).Name}' already contains a state transition");
-        }
     }
 
     public override async ValueTask ExecuteAsync(TSagaInstance body, object message, CancellationToken token)
