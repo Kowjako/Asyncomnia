@@ -9,6 +9,29 @@ public abstract class SagaBehaviorConfiguration<TSagaInstance> where TSagaInstan
     internal abstract ValueTask ExecuteAsync(TSagaInstance body, object message, IServiceProvider serviceProvider, CancellationToken token);
 }
 
+// Behavior which doesnt expose any configuration method, used for Ignore() operator
+internal sealed class SagaBehaviorEmptyConfiguration<TSagaInstance, TMessage> : SagaBehaviorConfiguration<TSagaInstance>
+    where TSagaInstance : AsyncomniaSagaInstance
+    where TMessage : class, IMessage
+{
+    public override Type MessageType => typeof(TMessage);
+
+    internal override ValueTask ExecuteAsync(TSagaInstance body, object message, IServiceProvider serviceProvider, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (message is not TMessage)
+        {
+            throw new ArgumentException($"Behavior for message type '{typeof(TMessage).FullName}' cannot execute a message of type '{message.GetType().FullName}'.", nameof(message));
+        }
+
+        token.ThrowIfCancellationRequested();
+
+        return ValueTask.CompletedTask;
+    }
+}
+
 public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorConfiguration<TSagaInstance> 
     where TSagaInstance : AsyncomniaSagaInstance
     where TMessage: class, IMessage
@@ -193,8 +216,7 @@ public class SagaBehaviorConfiguration<TSagaInstance, TMessage> : SagaBehaviorCo
 
         if (!_registeredStates.Contains(state))
         {
-            throw new InvalidOperationException(
-                $"Cannot transition to state '{state.Name}' because it is not registered in the state machine. Register states before configuring transitions.");
+            throw new InvalidOperationException($"Cannot transition to state '{state.Name}' because it is not registered in the state machine. Register states before configuring transitions.");
         }
 
         _activities.Add(ctx =>

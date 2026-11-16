@@ -84,6 +84,25 @@ public abstract class AsyncomniaStateMachine<TSagaInstance> where TSagaInstance 
         return new SagaBehaviorConfiguration<TSagaInstance, TMessage>(@event, States);
     }
 
+    protected SagaBehaviorConfiguration<TSagaInstance> Ignore<TMessage>(SagaEvent<TMessage> @event) where TMessage: class, IMessage
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        if (!_events.ContainsKey(typeof(TMessage)))
+        {
+            throw new InvalidOperationException(
+                $"Event for message type '{typeof(TMessage).FullName}' is not registered in state machine '{GetType().FullName}'.");
+        }
+
+        if (!ReferenceEquals(@event, _events[typeof(TMessage)]))
+        {
+            throw new InvalidOperationException(
+                $"The provided event for message type '{typeof(TMessage).FullName}' does not belong to state machine '{GetType().FullName}'.");
+        }
+
+        return new SagaBehaviorEmptyConfiguration<TSagaInstance, TMessage>();
+    }
+
     internal bool TryGetBehavior(string currentState, Type messageType, out SagaBehaviorConfiguration<TSagaInstance>? behavior)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentState);
