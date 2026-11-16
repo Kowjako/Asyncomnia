@@ -6,7 +6,7 @@ namespace Asyncomnia.Messaging.Sagas.Runtime;
 // SagaCommandHandler is used to handle commands by common Asyncomnia MessageHandlerDispatcher,
 // because when command arrives, MessageHandlerDispatcher is looking for handlers, here
 // our handler just runs saga dedicated for this command :D
-internal class SagaCommandHandler<TStateMachine, TSagaInstance, TCommand> : ICommandHandler<TCommand>
+internal sealed class SagaCommandHandler<TStateMachine, TSagaInstance, TCommand> : ICommandHandler<TCommand>
     where TCommand : class, ICommand
     where TStateMachine : AsyncomniaStateMachine<TSagaInstance>
     where TSagaInstance : AsyncomniaSagaInstance, new()

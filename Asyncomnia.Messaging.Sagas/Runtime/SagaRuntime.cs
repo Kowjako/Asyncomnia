@@ -42,7 +42,7 @@ internal sealed class SagaRuntime<TStateMachine, TSagaInstance>
 			var inserted = await _sagaRepository.TryInsertAsync(instance, token);
 			if (!inserted)
 			{
-                // Here we come, if another thread inserted SagaInstance, and our thread lose insert (due to PK conflict)
+                // Here we come, if another thread at the same time inserted SagaInstance, and our thread lose insert (due to PK conflict)
                 // so we can grab it now and process for current message
                 instance = await _sagaRepository.GetForUpdateAsync(correlationId, token);
 				if (instance == null)

@@ -6,7 +6,7 @@ namespace Asyncomnia.Messaging.Sagas.Runtime;
 // SagaEventHandler is used to handle events by common Asyncomnia MessageHandlerDispatcher,
 // because when event arrives, MessageHandlerDispatcher is looking for handlers, here
 // our handler just runs saga dedicated for this event :D
-internal class SagaEventHandler<TStateMachine, TSagaInstance, TEvent> : IEventHandler<TEvent> 
+internal sealed class SagaEventHandler<TStateMachine, TSagaInstance, TEvent> : IEventHandler<TEvent> 
     where TEvent : class, IEvent
     where TStateMachine: AsyncomniaStateMachine<TSagaInstance>
     where TSagaInstance: AsyncomniaSagaInstance, new()
