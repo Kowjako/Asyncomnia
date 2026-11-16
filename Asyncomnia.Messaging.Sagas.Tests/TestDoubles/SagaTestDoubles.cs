@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.Sagas.StateMachine;
 using Asyncomnia.Messaging.Sagas.StateMachine.Behavior;
 using Asyncomnia.Messaging.Sagas.StateMachine.Configuration;
+using Asyncomnia.Messaging.Sagas.Persistence;
 
 namespace Asyncomnia.Messaging.Sagas.Tests.TestDoubles;
 
@@ -193,3 +194,40 @@ internal sealed class CapturingMessageScheduler : IMessageScheduler
 }
 
 internal sealed class ScopedDependency;
+
+internal sealed class StubSagaRepository<TSagaInstance> : ISagaRepository<TSagaInstance>
+    where TSagaInstance : AsyncomniaSagaInstance
+{
+    private readonly Queue<TSagaInstance?> _getResults = new();
+
+    public List<(Guid CorrelationId, CancellationToken CancellationToken)> GetCalls { get; } = [];
+    public List<(TSagaInstance Instance, CancellationToken CancellationToken)> InsertCalls { get; } = [];
+    public List<(TSagaInstance Instance, CancellationToken CancellationToken)> UpdateCalls { get; } = [];
+
+    public bool InsertResult { get; set; } = true;
+
+    public void EnqueueGetResult(TSagaInstance? instance)
+    {
+        _getResults.Enqueue(instance);
+    }
+
+    public Task<TSagaInstance?> GetForUpdateAsync(Guid correlationId, CancellationToken token)
+    {
+        GetCalls.Add((correlationId, token));
+
+        var result = _getResults.Count > 0 ? _getResults.Dequeue() : null;
+        return Task.FromResult(result);
+    }
+
+    public Task<bool> TryInsertAsync(TSagaInstance instance, CancellationToken token)
+    {
+        InsertCalls.Add((instance, token));
+        return Task.FromResult(InsertResult);
+    }
+
+    public Task UpdateAsync(TSagaInstance instance, CancellationToken token)
+    {
+        UpdateCalls.Add((instance, token));
+        return Task.CompletedTask;
+    }
+}

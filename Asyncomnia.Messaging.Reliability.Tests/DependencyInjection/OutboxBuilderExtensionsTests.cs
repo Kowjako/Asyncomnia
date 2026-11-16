@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
@@ -36,6 +37,10 @@ public sealed class OutboxBuilderExtensionsTests
         builder.UseOutbox();
 
         Assert.Single(services, x => x.ServiceType == typeof(IOutboundMessagePipeline));
+        var featureMarker = Assert.Single(
+            services,
+            x => x.ServiceType == typeof(OutboxFeatureRegistration));
+        Assert.Equal(ServiceLifetime.Singleton, featureMarker.Lifetime);
     }
 
     [Fact]

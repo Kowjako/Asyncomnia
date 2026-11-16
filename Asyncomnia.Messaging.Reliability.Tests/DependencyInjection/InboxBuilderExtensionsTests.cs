@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
@@ -67,6 +68,10 @@ public sealed class InboxBuilderExtensionsTests
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<InboxOptions>));
+        var featureMarker = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(InboxFeatureRegistration));
+        Assert.Equal(ServiceLifetime.Singleton, featureMarker.Lifetime);
 
         var hostedService = Assert.Single(
             services,
