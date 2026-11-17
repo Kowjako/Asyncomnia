@@ -10,9 +10,12 @@ using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Outbox.Retention;
 using Asyncomnia.Messaging.Reliability.SqlServer.Sagas;
+using Asyncomnia.Messaging.Reliability.SqlServer.Sagas.Retention;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 using Asyncomnia.Messaging.Sagas.Persistence;
+using Asyncomnia.Messaging.Sagas.Persistence.Retention;
 using Asyncomnia.Messaging.Sagas.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -42,6 +45,7 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
         builder.UseSqlServer(Configure);
 
         AssertSingleScopedRegistration<IOutboxStore>(services, "SqlServerOutboxStore");
+        AssertSingleScopedRegistration<IOutboxCleanupStore>(services, nameof(SqlServerOutboxCleanupStore));
         AssertSingleScopedRegistration<IOutboxWriter>(services, nameof(SqlServerOutboxWriter));
         AssertSingleScopedRegistration<IInboxWriter>(services, nameof(SqlServerInboxWriter));
         AssertSingleScopedRegistration<IInboxCleanupStore>(services, nameof(SqlServerInboxCleanupStore));
@@ -53,6 +57,9 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
             services,
             typeof(ISagaRepository<>),
             typeof(SqlServerSagaRepository<>));
+        AssertSingleScopedRegistration<ISagaCleanupStore>(
+            services,
+            nameof(SqlServerSagaCleanupStore));
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<SqlServerOptions>));

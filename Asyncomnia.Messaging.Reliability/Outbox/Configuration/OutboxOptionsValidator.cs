@@ -36,6 +36,26 @@ internal sealed class OutboxOptionsValidator : IValidateOptions<OutboxOptions>
             return ValidateOptionsResult.Fail("OutboxOptions:RetryDelay must be greater than zero");
         }
 
+        if (options.ProcessedMessageRetention <= TimeSpan.Zero)
+        {
+            return ValidateOptionsResult.Fail("OutboxOptions:ProcessedMessageRetention must be greater than zero");
+        }
+
+        if (options.FailedMessageRetention != null && options.FailedMessageRetention <= TimeSpan.Zero)
+        {
+            return ValidateOptionsResult.Fail("OutboxOptions:FailedMessageRetention must be greater than zero when configured");
+        }
+
+        if (options.CleanupBatchSize <= 0)
+        {
+            return ValidateOptionsResult.Fail("OutboxOptions:CleanupBatchSize must be greater than zero");
+        }
+
+        if (options.CleanupInterval <= TimeSpan.Zero)
+        {
+            return ValidateOptionsResult.Fail("OutboxOptions:CleanupInterval must be greater than zero");
+        }
+
         return ValidateOptionsResult.Success;
     }
 }

@@ -3,10 +3,12 @@ using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Sagas.Configuration;
+using Asyncomnia.Messaging.Sagas.Persistence.Retention;
 using Asyncomnia.Messaging.Sagas.Runtime;
 using Asyncomnia.Messaging.Sagas.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Sagas.DependencyInjection;
@@ -18,6 +20,16 @@ public static class SagaRegistrationExtensions
 
     private static readonly MethodInfo CreateCommandDescriptor = typeof(MessageDispatchDescriptorFactory)
         .GetMethod(nameof(MessageDispatchDescriptorFactory.CreateCommand)) ?? throw new InvalidOperationException($"Could not find method '{nameof(MessageDispatchDescriptorFactory.CreateCommand)}' on '{typeof(MessageDispatchDescriptorFactory).FullName}'.");
+
+    public static AsyncomniaMessagingBuilder ConfigureSagas(this AsyncomniaMessagingBuilder builder, Action<SagaOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        builder.Services.AddOptions<SagaOptions>().Configure(configure);
+
+        return builder;
+    }
 
     public static AsyncomniaMessagingBuilder RegisterAsyncomniaSaga<TStateMachine, TSagaInstance>(this AsyncomniaMessagingBuilder builder)
         where TStateMachine : AsyncomniaStateMachine<TSagaInstance>, new()
@@ -56,6 +68,9 @@ public static class SagaRegistrationExtensions
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SagaOptions>, SagaOptionsValidator>());
         builder.Services.AddOptions<SagaOptions>().ValidateOnStart();
+
+        builder.Services.TryAddScoped<SagaCleanupProcessor>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SagaCleanupBackgroundJob>());
 
         return builder;
     }

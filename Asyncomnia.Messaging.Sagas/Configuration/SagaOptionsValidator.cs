@@ -20,6 +20,21 @@ internal sealed class SagaOptionsValidator(IServiceProviderIsService services) :
             failures.Add("Asyncomnia sagas require Outbox processing. Call UseOutbox() when configuring Asyncomnia Messaging.");
         }
 
+        if (options.FinalizedSagaRetention <= TimeSpan.Zero)
+        {
+            failures.Add("SagaOptions:FinalizedSagaRetention must be greater than zero");
+        }
+
+        if (options.CleanupBatchSize <= 0)
+        {
+            failures.Add("SagaOptions:CleanupBatchSize must be greater than zero");
+        }
+
+        if (options.CleanupInterval <= TimeSpan.Zero)
+        {
+            failures.Add("SagaOptions:CleanupInterval must be greater than zero");
+        }
+
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

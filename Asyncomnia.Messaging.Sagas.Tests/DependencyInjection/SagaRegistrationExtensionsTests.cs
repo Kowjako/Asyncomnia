@@ -5,10 +5,12 @@ using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Sagas.Configuration;
 using Asyncomnia.Messaging.Sagas.DependencyInjection;
 using Asyncomnia.Messaging.Sagas.Persistence;
+using Asyncomnia.Messaging.Sagas.Persistence.Retention;
 using Asyncomnia.Messaging.Sagas.Runtime;
 using Asyncomnia.Messaging.Sagas.StateMachine;
 using Asyncomnia.Messaging.Sagas.Tests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Sagas.Tests.DependencyInjection;
@@ -158,6 +160,13 @@ public sealed class SagaRegistrationExtensionsTests
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<SagaOptions>));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(SagaCleanupProcessor));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHostedService) &&
+                descriptor.ImplementationType == typeof(SagaCleanupBackgroundJob));
     }
 
     [Fact]

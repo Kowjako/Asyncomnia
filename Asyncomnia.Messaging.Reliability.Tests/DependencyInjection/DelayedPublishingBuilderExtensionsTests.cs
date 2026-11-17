@@ -5,6 +5,7 @@ using Asyncomnia.Messaging.Reliability.DelayedPublishing.Processing;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
+using Asyncomnia.Messaging.Reliability.Outbox.Processing.Retention;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -51,6 +52,9 @@ public sealed class DelayedPublishingBuilderExtensionsTests
             descriptor => descriptor.ServiceType == typeof(OutboxBatchProcessor));
         Assert.Single(
             services,
+            descriptor => descriptor.ServiceType == typeof(OutboxCleanupProcessor));
+        Assert.Single(
+            services,
             descriptor => descriptor.ServiceType ==
                 typeof(IValidateOptions<DelayedPublishingOptions>));
         Assert.Single(
@@ -61,13 +65,16 @@ public sealed class DelayedPublishingBuilderExtensionsTests
         var hostedServices = services
             .Where(descriptor => descriptor.ServiceType == typeof(IHostedService))
             .ToArray();
-        Assert.Equal(2, hostedServices.Length);
+        Assert.Equal(3, hostedServices.Length);
         Assert.Contains(
             hostedServices,
             descriptor => descriptor.ImplementationType?.Name == "DelayedMessageBackgroundJob");
         Assert.Contains(
             hostedServices,
             descriptor => descriptor.ImplementationType?.Name == "OutboxBackgroundJob");
+        Assert.Contains(
+            hostedServices,
+            descriptor => descriptor.ImplementationType?.Name == "OutboxCleanupBackgroundJob");
     }
 
     [Fact]
@@ -85,10 +92,17 @@ public sealed class DelayedPublishingBuilderExtensionsTests
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(OutboxBatchProcessor));
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(OutboxCleanupProcessor));
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&
                 descriptor.ImplementationType?.Name == "OutboxBackgroundJob");
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHostedService) &&
+                descriptor.ImplementationType?.Name == "OutboxCleanupBackgroundJob");
     }
 
     [Theory]
@@ -116,11 +130,18 @@ public sealed class DelayedPublishingBuilderExtensionsTests
             descriptor => descriptor.ServiceType == typeof(OutboxBatchProcessor));
         Assert.Single(
             services,
+            descriptor => descriptor.ServiceType == typeof(OutboxCleanupProcessor));
+        Assert.Single(
+            services,
             descriptor => descriptor.ServiceType == typeof(IValidateOptions<OutboxOptions>));
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&
                 descriptor.ImplementationType?.Name == "OutboxBackgroundJob");
+        Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHostedService) &&
+                descriptor.ImplementationType?.Name == "OutboxCleanupBackgroundJob");
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&

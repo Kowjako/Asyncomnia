@@ -4,6 +4,7 @@ using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
+using Asyncomnia.Messaging.Reliability.Outbox.Processing.Retention;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -79,10 +80,34 @@ public sealed class OutboxBuilderExtensionsTests
         builder.UseOutbox();
         builder.UseOutbox();
 
+        var registrations = services
+            .Where(x => x.ServiceType == typeof(IHostedService))
+            .ToArray();
+
+        Assert.Equal(2, registrations.Length);
+        Assert.All(
+            registrations,
+            registration => Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime));
+        Assert.Contains(
+            registrations,
+            registration => registration.ImplementationType?.Name == "OutboxBackgroundJob");
+        Assert.Contains(
+            registrations,
+            registration => registration.ImplementationType?.Name == "OutboxCleanupBackgroundJob");
+    }
+
+    [Fact]
+    public void UseOutbox_CalledTwice_LeavesSingleScopedCleanupProcessorRegistration()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseOutbox();
+        builder.UseOutbox();
+
         var registration = Assert.Single(
             services,
-            x => x.ServiceType == typeof(IHostedService));
-        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
-        Assert.Equal("OutboxBackgroundJob", registration.ImplementationType?.Name);
+            x => x.ServiceType == typeof(OutboxCleanupProcessor));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
     }
 }

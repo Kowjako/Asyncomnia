@@ -63,6 +63,57 @@ public sealed class SagaOptionsValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenFinalizedSagaRetentionIsNotPositive_ReturnsFailure()
+    {
+        var validator = CreateValidatorWithRequiredFeatures();
+        var options = new SagaOptions
+        {
+            FinalizedSagaRetention = TimeSpan.Zero
+        };
+
+        var result = validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "SagaOptions:FinalizedSagaRetention must be greater than zero",
+            result.Failures);
+    }
+
+    [Fact]
+    public void Validate_WhenCleanupBatchSizeIsNotPositive_ReturnsFailure()
+    {
+        var validator = CreateValidatorWithRequiredFeatures();
+        var options = new SagaOptions
+        {
+            CleanupBatchSize = 0
+        };
+
+        var result = validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "SagaOptions:CleanupBatchSize must be greater than zero",
+            result.Failures);
+    }
+
+    [Fact]
+    public void Validate_WhenCleanupIntervalIsNotPositive_ReturnsFailure()
+    {
+        var validator = CreateValidatorWithRequiredFeatures();
+        var options = new SagaOptions
+        {
+            CleanupInterval = TimeSpan.Zero
+        };
+
+        var result = validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "SagaOptions:CleanupInterval must be greater than zero",
+            result.Failures);
+    }
+
+    [Fact]
     public void RegisteredSaga_WithoutInboxAndOutbox_StartupValidationThrowsOptionsValidationException()
     {
         var services = new ServiceCollection();
@@ -104,6 +155,14 @@ public sealed class SagaOptionsValidatorTests
         {
             return _registeredServices.Contains(serviceType);
         }
+    }
+
+    private static SagaOptionsValidator CreateValidatorWithRequiredFeatures()
+    {
+        return new SagaOptionsValidator(
+            new StubServiceProviderIsService(
+                typeof(InboxFeatureRegistration),
+                typeof(OutboxFeatureRegistration)));
     }
 
     private sealed class MinimalStateMachine : AsyncomniaStateMachine<TestSagaInstance>
