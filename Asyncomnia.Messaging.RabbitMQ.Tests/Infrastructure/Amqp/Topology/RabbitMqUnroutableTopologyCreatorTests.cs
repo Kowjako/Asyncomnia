@@ -1,5 +1,7 @@
+using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Microsoft.Extensions.Options;
 using Moq;
 using RabbitMQ.Client;
 
@@ -17,10 +19,30 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
         var token = cancellation.Token;
         SetupChannel(channelFactory, channel, token);
         SetupTopology(channel, token);
-        var creator = new RabbitMqUnroutableTopologyCreator(
-            channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         await creator.EnsureDeclaredAsync(token);
+
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task EnsureDeclaredAsync_UsesConfiguredQueueLimitsAndDropHeadOverflow()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var options = new RabbitMqOptions
+        {
+            UnroutableQueueMaxLength = 25,
+            UnroutableQueueMaxLengthBytes = 4096
+        };
+        SetupChannel(channelFactory, channel);
+        SetupTopology(channel, options: options);
+        var creator = CreateCreator(channelFactory, options);
+
+        await creator.EnsureDeclaredAsync();
 
         channelFactory.VerifyAll();
         channel.VerifyAll();
@@ -34,8 +56,7 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
         var channel = new Mock<IChannel>(MockBehavior.Strict);
         SetupChannel(channelFactory, channel);
         SetupTopology(channel);
-        var creator = new RabbitMqUnroutableTopologyCreator(
-            channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         await creator.EnsureDeclaredAsync();
         await creator.EnsureDeclaredAsync();
@@ -74,8 +95,7 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
                 return releaseDeclaration.Task;
             });
         SetupQueueAndBinding(channel);
-        var creator = new RabbitMqUnroutableTopologyCreator(
-            channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         var first = creator.EnsureDeclaredAsync();
         await declarationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -125,8 +145,7 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
             .Setup(x => x.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         SetupTopology(retryChannel);
-        var creator = new RabbitMqUnroutableTopologyCreator(
-            channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => creator.EnsureDeclaredAsync());
@@ -165,8 +184,7 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
                 return releaseDeclaration.Task;
             });
         SetupQueueAndBinding(channel);
-        var creator = new RabbitMqUnroutableTopologyCreator(
-            channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
         using var cancellation = new CancellationTokenSource();
 
         var active = creator.EnsureDeclaredAsync();
@@ -187,9 +205,34 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
     public void Constructor_WhenChannelFactoryIsNull_ThrowsArgumentNullException()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new RabbitMqUnroutableTopologyCreator(null!));
+            new RabbitMqUnroutableTopologyCreator(
+                null!,
+                Options.Create(new RabbitMqOptions())));
 
         Assert.Equal("channelFactory", exception.ParamName);
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            new RabbitMqUnroutableTopologyCreator(
+                channelFactory.Object,
+                null!));
+
+        Assert.Equal("rabbitMqOptions", exception.ParamName);
+    }
+
+    private static RabbitMqUnroutableTopologyCreator CreateCreator(
+        Mock<IRabbitMqChannelFactory> channelFactory,
+        RabbitMqOptions? options = null)
+    {
+        return new RabbitMqUnroutableTopologyCreator(
+            channelFactory.Object,
+            Options.Create(options ?? new RabbitMqOptions()));
     }
 
     private static void SetupChannel(
@@ -207,7 +250,8 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
 
     private static void SetupTopology(
         Mock<IChannel> channel,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        RabbitMqOptions? options = null)
     {
         channel
             .Setup(x => x.ExchangeDeclareAsync(
@@ -220,20 +264,24 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
                 false,
                 token))
             .Returns(Task.CompletedTask);
-        SetupQueueAndBinding(channel, token);
+        SetupQueueAndBinding(channel, token, options);
     }
 
     private static void SetupQueueAndBinding(
         Mock<IChannel> channel,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        RabbitMqOptions? options = null)
     {
+        options ??= new RabbitMqOptions();
+
         channel
             .Setup(x => x.QueueDeclareAsync(
                 RabbitMqUnroutableDefaults.QueueName,
                 true,
                 false,
                 false,
-                null,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasQueueArguments(arguments, options)),
                 false,
                 false,
                 token))
@@ -250,5 +298,21 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
                 false,
                 token))
             .Returns(Task.CompletedTask);
+    }
+
+    private static bool HasQueueArguments(
+        IDictionary<string, object?>? arguments,
+        RabbitMqOptions options)
+    {
+        return arguments is not null &&
+               arguments.Count == 3 &&
+               arguments.TryGetValue("x-max-length", out var maxLength) &&
+               Equals(maxLength, options.UnroutableQueueMaxLength) &&
+               arguments.TryGetValue(
+                   "x-max-length-bytes",
+                   out var maxLengthBytes) &&
+               Equals(maxLengthBytes, options.UnroutableQueueMaxLengthBytes) &&
+               arguments.TryGetValue("x-overflow", out var overflow) &&
+               Equals(overflow, "drop-head");
     }
 }

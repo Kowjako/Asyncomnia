@@ -1,4 +1,6 @@
-﻿using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
@@ -8,10 +10,14 @@ internal interface IRabbitMqUnroutableTopologyCreator
     Task EnsureDeclaredAsync(CancellationToken token = default);
 }
 
-internal sealed class RabbitMqUnroutableTopologyCreator(IRabbitMqChannelFactory channelFactory) : IRabbitMqUnroutableTopologyCreator
+internal sealed class RabbitMqUnroutableTopologyCreator(
+    IRabbitMqChannelFactory channelFactory, IOptions<RabbitMqOptions> rabbitMqOptions) : IRabbitMqUnroutableTopologyCreator
 {
     private readonly IRabbitMqChannelFactory _channelFactory = channelFactory
         ?? throw new ArgumentNullException(nameof(channelFactory));
+
+    private readonly RabbitMqOptions _rabbitMqOptions = rabbitMqOptions?.Value
+        ?? throw new ArgumentNullException(nameof(rabbitMqOptions));
 
     private readonly SemaphoreSlim _declarationLock = new(1, 1);
     private bool _declared;
@@ -44,7 +50,7 @@ internal sealed class RabbitMqUnroutableTopologyCreator(IRabbitMqChannelFactory 
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
-                arguments: null,
+                arguments: RabbitMqUnroutableQueueArgumentsFactory.Create(_rabbitMqOptions),
                 passive: false,
                 noWait: false,
                 cancellationToken: token);

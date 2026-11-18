@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Asyncomnia.Messaging.DependencyInjection;
+using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Infrastructure;
@@ -267,7 +268,8 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
             durable: true,
             exclusive: false,
             autoDelete: false,
-            arguments: null,
+            arguments: RabbitMqUnroutableQueueArgumentsFactory.Create(
+                new RabbitMqOptions()),
             passive: false,
             noWait: false,
             cancellationToken: token);

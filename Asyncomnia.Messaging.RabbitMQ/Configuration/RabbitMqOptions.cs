@@ -26,4 +26,16 @@ public sealed class RabbitMqOptions
     /// the same value for exchanges with the same names.
     /// </summary>
     public bool CaptureUnroutableEvents { get; set; } = true;
+
+    /// <summary>
+    /// Maximum number of ready messages retained in the global unroutable queue.
+    /// All applications sharing the same RabbitMQ virtual host must use the same value.
+    /// </summary>
+    public int UnroutableQueueMaxLength { get; set; } = 10_000;
+
+    /// <summary>
+    /// Maximum total body size, in bytes, retained in the global unroutable queue.
+    /// All applications sharing the same RabbitMQ virtual host must use the same value.
+    /// </summary>
+    public long UnroutableQueueMaxLengthBytes { get; set; } = 256L * 1024 * 1024;
 }

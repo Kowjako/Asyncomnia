@@ -11,4 +11,15 @@ public sealed class RabbitMqOptionsTests
 
         Assert.True(options.CaptureUnroutableEvents);
     }
+
+    [Fact]
+    public void UnroutableQueueLimits_UseBoundedDefaults()
+    {
+        var options = new RabbitMqOptions();
+
+        Assert.Equal(10_000, options.UnroutableQueueMaxLength);
+        Assert.Equal(
+            256L * 1024 * 1024,
+            options.UnroutableQueueMaxLengthBytes);
+    }
 }

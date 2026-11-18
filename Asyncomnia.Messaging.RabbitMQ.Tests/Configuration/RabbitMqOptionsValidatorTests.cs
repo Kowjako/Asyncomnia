@@ -77,4 +77,46 @@ public sealed class RabbitMqOptionsValidatorTests
             nameof(RabbitMqOptions.PublisherChannelCount),
             result.FailureMessage);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_WhenUnroutableQueueMaxLengthIsNotPositive_ReturnsFailure(
+        int maxLength)
+    {
+        var options = CreateValidOptions();
+        options.UnroutableQueueMaxLength = maxLength;
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqOptions.UnroutableQueueMaxLength),
+            result.FailureMessage);
+    }
+
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(-1L)]
+    public void Validate_WhenUnroutableQueueMaxLengthBytesIsNotPositive_ReturnsFailure(
+        long maxLengthBytes)
+    {
+        var options = CreateValidOptions();
+        options.UnroutableQueueMaxLengthBytes = maxLengthBytes;
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqOptions.UnroutableQueueMaxLengthBytes),
+            result.FailureMessage);
+    }
+
+    private static RabbitMqOptions CreateValidOptions()
+    {
+        return new RabbitMqOptions
+        {
+            ConnectionString = "amqp://guest:guest@localhost:5672/"
+        };
+    }
 }
