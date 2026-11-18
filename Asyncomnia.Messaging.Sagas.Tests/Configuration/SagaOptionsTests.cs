@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Sagas.Configuration;
 using Asyncomnia.Messaging.Sagas.DependencyInjection;

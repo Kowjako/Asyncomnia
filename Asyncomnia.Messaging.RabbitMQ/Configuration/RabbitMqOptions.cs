@@ -17,4 +17,13 @@ public sealed class RabbitMqOptions
     /// So we are preparing N channels in pool for publishing
     /// </summary>
     public int PublisherChannelCount { get; set; } = 4;
+
+    /// <summary>
+    /// Captures events that cannot be routed to any queue.
+    /// Commands are not affected and continue to use mandatory publishing.
+    ///
+    /// All applications sharing the same RabbitMQ virtual host must use
+    /// the same value for exchanges with the same names.
+    /// </summary>
+    public bool CaptureUnroutableEvents { get; set; } = true;
 }

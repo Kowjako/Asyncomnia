@@ -5,6 +5,7 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Microsoft.Extensions.Options;
@@ -268,7 +269,11 @@ public sealed class RabbitMqConsumerHostedServiceTests
         var resolver = new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(options));
+            Options.Create(options),
+            Options.Create(new RabbitMqOptions
+            {
+                CaptureUnroutableEvents = false
+            }));
         var subscriptions = resolver.Resolve();
         var channelFactory =
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
@@ -331,7 +336,9 @@ public sealed class RabbitMqConsumerHostedServiceTests
 
         var topologyCreator = new RabbitMqTopologyCreator(
             channelFactory.Object,
-            resolver);
+            resolver,
+            new Mock<IRabbitMqUnroutableTopologyCreator>(
+                MockBehavior.Strict).Object);
         var retryTopologyCreator =
             new Mock<IRabbitMqRetryTopologyCreator>(MockBehavior.Strict);
         var deadLetterTopologyCreator =

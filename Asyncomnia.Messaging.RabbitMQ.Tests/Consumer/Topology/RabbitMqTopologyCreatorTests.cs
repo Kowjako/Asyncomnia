@@ -3,6 +3,7 @@ using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Microsoft.Extensions.Options;
@@ -132,6 +133,87 @@ public sealed class RabbitMqTopologyCreatorTests
     }
 
     [Fact]
+    public async Task DeclareAsync_WithUnroutableEventCapture_DeclaresFallbackBeforeEventExchange()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+        var sequence = new MockSequence();
+        unroutableTopologyCreator
+            .InSequence(sequence)
+            .Setup(x => x.EnsureDeclaredAsync(CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        channelFactory
+            .InSequence(sequence)
+            .Setup(x => x.CreateAsync(null, CancellationToken.None))
+            .ReturnsAsync(channel.Object);
+        channel
+            .InSequence(sequence)
+            .Setup(x => x.ExchangeDeclareAsync(
+                "events/clients",
+                ExchangeType.Topic,
+                true,
+                false,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasUnroutableFallback(arguments)),
+                false,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        SetupQueueDeclaration(
+            channel,
+            "events/clients/subscription/test-service");
+        SetupBinding(
+            channel,
+            "events/clients/subscription/test-service",
+            "events/clients",
+            "client-created-event");
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)],
+            captureUnroutableEvents: true,
+            unroutableTopologyCreator: unroutableTopologyCreator);
+
+        var subscriptions = await creator.DeclareAsync();
+
+        Assert.True(Assert.Single(subscriptions).UseUnroutableFallback);
+        unroutableTopologyCreator.VerifyAll();
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DeclareAsync_WhenUnroutableTopologyDeclarationFails_DoesNotCreateSubscriptionChannel()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+        var expectedException =
+            new InvalidOperationException("unroutable topology failed");
+        unroutableTopologyCreator
+            .Setup(x => x.EnsureDeclaredAsync(CancellationToken.None))
+            .ThrowsAsync(expectedException);
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)],
+            captureUnroutableEvents: true,
+            unroutableTopologyCreator: unroutableTopologyCreator);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.DeclareAsync());
+
+        Assert.Same(expectedException, exception);
+        channelFactory.VerifyNoOtherCalls();
+        unroutableTopologyCreator.VerifyAll();
+    }
+
+    [Fact]
     public async Task DeclareAsync_WhenCancellationIsAlreadyRequested_DoesNotCreateChannel()
     {
         var channelFactory =
@@ -186,14 +268,23 @@ public sealed class RabbitMqTopologyCreatorTests
         var channelFactory =
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var subscriptionResolver = CreateSubscriptionResolver();
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
 
         Assert.Throws<ArgumentNullException>(
             () => new RabbitMqTopologyCreator(
                 null!,
-                subscriptionResolver));
+                subscriptionResolver,
+                unroutableTopologyCreator.Object));
         Assert.Throws<ArgumentNullException>(
             () => new RabbitMqTopologyCreator(
                 channelFactory.Object,
+                null!,
+                unroutableTopologyCreator.Object));
+        Assert.Throws<ArgumentNullException>(
+            () => new RabbitMqTopologyCreator(
+                channelFactory.Object,
+                subscriptionResolver,
                 null!));
     }
 
@@ -201,20 +292,28 @@ public sealed class RabbitMqTopologyCreatorTests
         Mock<IRabbitMqChannelFactory> channelFactory,
         IReadOnlyCollection<Type>? eventTypes = null,
         IReadOnlyCollection<Type>? commandTypes = null,
-        Action<RabbitMqConsumerOptions>? configureOptions = null)
+        Action<RabbitMqConsumerOptions>? configureOptions = null,
+        bool captureUnroutableEvents = false,
+        Mock<IRabbitMqUnroutableTopologyCreator>? unroutableTopologyCreator = null)
     {
+        unroutableTopologyCreator ??=
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+
         return new RabbitMqTopologyCreator(
             channelFactory.Object,
             CreateSubscriptionResolver(
                 eventTypes,
                 commandTypes,
-                configureOptions));
+                configureOptions,
+                captureUnroutableEvents),
+            unroutableTopologyCreator.Object);
     }
 
     private static RabbitMqSubscriptionResolver CreateSubscriptionResolver(
         IReadOnlyCollection<Type>? eventTypes = null,
         IReadOnlyCollection<Type>? commandTypes = null,
-        Action<RabbitMqConsumerOptions>? configureOptions = null)
+        Action<RabbitMqConsumerOptions>? configureOptions = null,
+        bool captureUnroutableEvents = false)
     {
         var catalog =
             new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
@@ -234,7 +333,11 @@ public sealed class RabbitMqTopologyCreatorTests
         return new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(options));
+            Options.Create(options),
+            Options.Create(new RabbitMqOptions
+            {
+                CaptureUnroutableEvents = captureUnroutableEvents
+            }));
     }
 
     private static void SetupChannel(Mock<IRabbitMqChannelFactory> channelFactory, Mock<IChannel> channel)
@@ -313,6 +416,15 @@ public sealed class RabbitMqTopologyCreatorTests
                arguments.Count == 1 &&
                arguments.TryGetValue("x-single-active-consumer", out var value) &&
                value is true;
+    }
+
+    private static bool HasUnroutableFallback(
+        IDictionary<string, object?>? arguments)
+    {
+        return arguments is not null &&
+               arguments.Count == 1 &&
+               arguments.TryGetValue("alternate-exchange", out var value) &&
+               Equals(value, RabbitMqUnroutableDefaults.ExchangeName);
     }
 
     private static void SetupBinding(Mock<IChannel> channel, string queueName, string exchangeName, string routingKey)

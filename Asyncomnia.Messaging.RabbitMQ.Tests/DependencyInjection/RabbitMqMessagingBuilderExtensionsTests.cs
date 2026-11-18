@@ -161,6 +161,25 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseRabbitMq_RegistersUnroutableTopologyCreatorAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        var registration = Assert.Single(
+            services,
+            x => x.ServiceType ==
+                typeof(IRabbitMqUnroutableTopologyCreator));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqUnroutableTopologyCreator),
+            registration.ImplementationType);
+    }
+
+    [Fact]
     public void UseRabbitMq_WhenTransportIsAlreadyRegistered_DoesNotReplaceIt()
     {
         var services = new ServiceCollection();
@@ -181,12 +200,17 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMq(options => options.ConnectionString = ConnectionString);
+        builder.UseRabbitMq(options =>
+        {
+            options.ConnectionString = ConnectionString;
+            options.CaptureUnroutableEvents = false;
+        });
         using var provider = services.BuildServiceProvider();
 
         var options = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
 
         Assert.Equal(ConnectionString, options.ConnectionString);
+        Assert.False(options.CaptureUnroutableEvents);
     }
 
     [Fact]

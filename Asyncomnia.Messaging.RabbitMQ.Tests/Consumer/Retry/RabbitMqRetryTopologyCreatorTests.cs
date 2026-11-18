@@ -266,7 +266,11 @@ public sealed class RabbitMqRetryTopologyCreatorTests
         var subscriptions = new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(options));
+            Options.Create(options),
+            Options.Create(new RabbitMqOptions
+            {
+                CaptureUnroutableEvents = false
+            }));
 
         return new RabbitMqRetryTopologyCreator(
             channelFactory.Object,

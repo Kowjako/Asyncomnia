@@ -29,6 +29,7 @@ public static class RabbitMqMessagingBuilderExtensions
         builder.Services.TryAddSingleton<IRabbitMqChannelPool, RabbitMqChannelPool>();
         builder.Services.TryAddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
 
+        builder.Services.TryAddSingleton<IRabbitMqUnroutableTopologyCreator, RabbitMqUnroutableTopologyCreator>();
         builder.Services.TryAddSingleton<IRabbitMqExchangeCreator, RabbitMqExchangeCreator>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqOptions>, RabbitMqOptionsValidator>());

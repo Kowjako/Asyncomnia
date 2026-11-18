@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Infrastructure;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
@@ -97,22 +98,102 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
     public async Task SendAsync_WhenCommandCannotBeRouted_ThrowsPublishException()
     {
         await using var provider = CreateProvider();
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = cancellationTokenSource.Token;
+        await using var connection = await CreateConnectionAsync(token);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: token);
+        await DeclareUnroutableTopologyAsync(channel, token);
         await using var scope = provider.CreateAsyncScope();
         var sender = scope.ServiceProvider.GetRequiredService<ICommandSender>();
         var command = new StartUnhandledJobCommand(Guid.NewGuid());
-        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         await Assert.ThrowsAnyAsync<PublishException>(
-            () => sender.SendAsync(command, token: cancellationTokenSource.Token));
+            () => sender.SendAsync(command, token: token));
     }
 
-    private ServiceProvider CreateProvider()
+    [Fact]
+    public async Task PublishAsync_WhenEventCannotBeRouted_CapturesItInGlobalUnroutableQueue()
+    {
+        await using var provider = CreateProvider();
+        using var cancellation =
+            new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = cancellation.Token;
+        await using var connection = await CreateConnectionAsync(token);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: token);
+        await DeclareUnroutableTopologyAsync(channel, token);
+        await channel.QueuePurgeAsync(
+            RabbitMqUnroutableDefaults.QueueName,
+            token);
+        await using var scope = provider.CreateAsyncScope();
+        var publisher =
+            scope.ServiceProvider.GetRequiredService<IEventPublisher>();
+        var @event = new UnhandledIntegrationEvent(Guid.NewGuid());
+
+        await publisher.PublishAsync(@event, token: token);
+
+        var result = await PullAvailableAsync(
+            channel,
+            RabbitMqUnroutableDefaults.QueueName,
+            token);
+        var receivedEvent =
+            JsonSerializer.Deserialize<UnhandledIntegrationEvent>(
+                result.Body.Span,
+                JsonOptions);
+
+        Assert.Equal(@event, receivedEvent);
+        Assert.Equal("events/unhandled-events", result.Exchange);
+        Assert.Equal("unhandled-integration-event", result.RoutingKey);
+        Assert.Contains(
+            nameof(UnhandledIntegrationEvent),
+            result.BasicProperties.Type);
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenUnroutableCaptureIsDisabled_DoesNotUseGlobalQueue()
+    {
+        await using var provider = CreateProvider(
+            captureUnroutableEvents: false);
+        using var cancellation =
+            new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = cancellation.Token;
+        await using var connection = await CreateConnectionAsync(token);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: token);
+        await DeclareUnroutableTopologyAsync(channel, token);
+        await channel.QueuePurgeAsync(
+            RabbitMqUnroutableDefaults.QueueName,
+            token);
+        await using var scope = provider.CreateAsyncScope();
+        var publisher =
+            scope.ServiceProvider.GetRequiredService<IEventPublisher>();
+
+        await publisher.PublishAsync(
+            new DroppedIntegrationEvent(Guid.NewGuid()),
+            token: token);
+
+        var result = await channel.BasicGetAsync(
+            RabbitMqUnroutableDefaults.QueueName,
+            autoAck: true,
+            cancellationToken: token);
+
+        Assert.Null(result);
+    }
+
+    private ServiceProvider CreateProvider(
+        bool captureUnroutableEvents = true)
     {
         var services = new ServiceCollection();
 
         services
             .AddAsyncomniaMessaging()
-            .UseRabbitMq(options => options.ConnectionString = _connectionString);
+            .UseRabbitMq(options =>
+            {
+                options.ConnectionString = _connectionString;
+                options.CaptureUnroutableEvents = captureUnroutableEvents;
+            });
 
         return services.BuildServiceProvider();
     }
@@ -133,12 +214,15 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
         string routingKey,
         CancellationToken token)
     {
+        await DeclareUnroutableTopologyAsync(channel, token);
+
         await channel.ExchangeDeclareAsync(
             exchangeName,
             ExchangeType.Topic,
             durable: true,
             autoDelete: false,
-            arguments: null,
+            arguments: RabbitMqExchangeArgumentsFactory.Create(
+                useUnroutableFallback: true),
             passive: false,
             noWait: false,
             cancellationToken: token);
@@ -162,6 +246,39 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
             cancellationToken: token);
 
         return queue.QueueName;
+    }
+
+    private static async Task DeclareUnroutableTopologyAsync(
+        IChannel channel,
+        CancellationToken token)
+    {
+        await channel.ExchangeDeclareAsync(
+            RabbitMqUnroutableDefaults.ExchangeName,
+            ExchangeType.Fanout,
+            durable: true,
+            autoDelete: false,
+            arguments: null,
+            passive: false,
+            noWait: false,
+            cancellationToken: token);
+
+        await channel.QueueDeclareAsync(
+            RabbitMqUnroutableDefaults.QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: null,
+            passive: false,
+            noWait: false,
+            cancellationToken: token);
+
+        await channel.QueueBindAsync(
+            RabbitMqUnroutableDefaults.QueueName,
+            RabbitMqUnroutableDefaults.ExchangeName,
+            routingKey: string.Empty,
+            arguments: null,
+            noWait: false,
+            cancellationToken: token);
     }
 
     private static async Task<BasicGetResult> PullAvailableAsync(

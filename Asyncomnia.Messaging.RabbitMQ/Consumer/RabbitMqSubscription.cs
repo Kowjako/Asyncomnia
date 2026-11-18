@@ -11,4 +11,6 @@ internal sealed record RabbitMqSubscription
     public IReadOnlyCollection<RabbitMqBinding> Bindings { get; init; } = [];
 
     public RabbitMqSubscriptionSettings Settings { get; init; } = null!;
+
+    public bool UseUnroutableFallback { get; init; }
 }
