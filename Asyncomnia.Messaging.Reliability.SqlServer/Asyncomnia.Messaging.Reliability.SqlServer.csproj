@@ -19,7 +19,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.22" />

@@ -2,13 +2,12 @@ using System.Data;
 using System.Data.Common;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 
-internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAccessor, IOptions<SqlServerOptions> options) : IOutboxWriter
+internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAccessor, ISqlServerConnectionFactory connectionFactory) : IOutboxWriter
 {
     private const string InsertSql = $@"
         INSERT INTO {SqlServerOutboxDefaults.QualifiedTableName}
@@ -33,8 +32,8 @@ internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAc
     private readonly IDbTransactionAccessor _transactionAccessor = transactionAccessor
         ?? throw new ArgumentNullException(nameof(transactionAccessor));
 
-    private readonly string _connectionString = options?.Value.ConnectionString
-        ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task WriteAsync(OutboxMessage message, CancellationToken token = default)
     {
@@ -52,8 +51,7 @@ internal sealed class SqlServerOutboxWriter(IDbTransactionAccessor transactionAc
 
     private async Task WriteStandaloneAsync(OutboxMessage message, CancellationToken token)
     {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await ExecuteInsertAsync(connection, transaction: null, message, token);
     }

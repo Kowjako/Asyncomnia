@@ -1,12 +1,11 @@
 ﻿using System.Data;
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 
-internal sealed class SqlServerMigrator(IOptions<SqlServerOptions> options, ILogger<SqlServerMigrator> logger)
+internal sealed class SqlServerMigrator(ISqlServerConnectionFactory connectionFactory, ILogger<SqlServerMigrator> logger)
 {
     private const int MaxMigrationLockAttempts = 3;
 
@@ -21,7 +20,8 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOptions> options, ILog
 
     private static readonly TimeSpan MigrationLockRetryDelay = TimeSpan.FromSeconds(2);
 
-    private readonly SqlServerOptions _options = options.Value;
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory ??
+        throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task MigrateAsync(CancellationToken token = default)
     {
@@ -50,8 +50,7 @@ internal sealed class SqlServerMigrator(IOptions<SqlServerOptions> options, ILog
 
     private async Task<bool> TryMigrateAsync(CancellationToken token)
     {
-        await using var connection = new SqlConnection(_options.ConnectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 

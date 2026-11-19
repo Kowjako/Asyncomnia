@@ -178,8 +178,8 @@ public sealed class EntityFrameworkCoreDelayedPublishingIntegrationTests : IAsyn
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(options => options.ConnectionString = _connectionString)
-            .UseEntityFrameworkCore<IntegrationDbContext>()
+            .UseSqlServer(sql =>
+                sql.UseEntityFrameworkCore<IntegrationDbContext>())
             .UseDelayedPublishing();
 
         _host = builder.Build();

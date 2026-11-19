@@ -96,9 +96,11 @@ public sealed class SqlServerOutboxIntegrationTests : IAsyncLifetime
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(options =>
-                options.ConnectionString = _connectionString)
-            .UseAdoNet<IIntegrationUnitOfWork>()
+            .UseSqlServer(sql =>
+            {
+                sql.UseConnectionString(_connectionString);
+                sql.UseAdoNet<IIntegrationUnitOfWork>();
+            })
             .UseOutbox();
 
         _host = builder.Build();

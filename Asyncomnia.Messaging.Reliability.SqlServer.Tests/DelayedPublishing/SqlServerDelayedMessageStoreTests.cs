@@ -1,13 +1,12 @@
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
-using Microsoft.Extensions.Options;
+using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.DelayedPublishing;
 
 public sealed class SqlServerDelayedMessageStoreTests
 {
     [Fact]
-    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    public void Constructor_WhenConnectionFactoryIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new SqlServerDelayedMessageStore(null!));
@@ -19,11 +18,7 @@ public sealed class SqlServerDelayedMessageStoreTests
     public async Task MoveDueToOutboxAsync_WhenBatchSizeIsNotPositive_ThrowsArgumentOutOfRangeException(
         int batchSize)
     {
-        var store = new SqlServerDelayedMessageStore(
-            Options.Create(new SqlServerOptions
-            {
-                ConnectionString = "Server=localhost;Database=AsyncomniaTests"
-            }));
+        var store = new SqlServerDelayedMessageStore(new TestSqlServerConnectionFactory());
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             store.MoveDueToOutboxAsync(DateTimeOffset.UtcNow, batchSize));

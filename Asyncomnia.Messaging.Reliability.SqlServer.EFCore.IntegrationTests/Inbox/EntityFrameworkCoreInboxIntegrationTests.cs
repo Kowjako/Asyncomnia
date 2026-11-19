@@ -102,9 +102,8 @@ public sealed class EntityFrameworkCoreInboxIntegrationTests : IAsyncLifetime
         builder.Services
             .AddAsyncomniaMessaging()
             .RegisterEventHandler<InboxOrderCreatedEvent, InboxOrderCreatedEventHandler>()
-            .UseSqlServer(options =>
-                options.ConnectionString = _connectionString)
-            .UseEntityFrameworkCore<IntegrationDbContext>()
+            .UseSqlServer(sql =>
+                sql.UseEntityFrameworkCore<IntegrationDbContext>())
             .UseOutbox()
             .UseInbox();
 

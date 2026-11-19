@@ -190,9 +190,11 @@ public sealed class SqlServerSagaRuntimeIntegrationTests : IAsyncLifetime
         builder.Services
             .AddAsyncomniaMessaging()
             .RegisterAsyncomniaSaga<IntegrationRuntimeStateMachine, IntegrationRuntimeSaga>()
-            .UseSqlServer(options =>
-                options.ConnectionString = _connectionString)
-            .UseAdoNet<IIntegrationUnitOfWork>()
+            .UseSqlServer(sql =>
+            {
+                sql.UseConnectionString(_connectionString);
+                sql.UseAdoNet<IIntegrationUnitOfWork>();
+            })
             .UseOutbox()
             .UseInbox();
 

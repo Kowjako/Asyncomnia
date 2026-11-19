@@ -1,11 +1,10 @@
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Asyncomnia.Messaging.Sagas.Persistence.Retention;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Sagas.Retention;
 
-internal sealed class SqlServerSagaCleanupStore(IOptions<SqlServerOptions> options) : ISagaCleanupStore
+internal sealed class SqlServerSagaCleanupStore(ISqlServerConnectionFactory connectionFactory) : ISagaCleanupStore
 {
     private const string DeleteFinalizedSql = $@"
         DECLARE @Now datetimeoffset(7) = SYSUTCDATETIME();
@@ -23,8 +22,8 @@ internal sealed class SqlServerSagaCleanupStore(IOptions<SqlServerOptions> optio
 
         SELECT @@ROWCOUNT";
 
-    private readonly string _connectionString = options?.Value.ConnectionString
-        ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task<int> DeleteFinalizedAsync(TimeSpan finalizedSagaRetention, int batchSize, CancellationToken token = default)
     {
@@ -33,8 +32,7 @@ internal sealed class SqlServerSagaCleanupStore(IOptions<SqlServerOptions> optio
 
         var (retentionDays, retentionSeconds) = SplitRetention(finalizedSagaRetention);
 
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = DeleteFinalizedSql;

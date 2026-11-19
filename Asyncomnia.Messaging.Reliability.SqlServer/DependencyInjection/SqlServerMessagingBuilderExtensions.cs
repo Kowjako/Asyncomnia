@@ -15,38 +15,36 @@ using Asyncomnia.Messaging.Reliability.SqlServer.Sagas.Retention;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 using Asyncomnia.Messaging.Sagas.Persistence;
 using Asyncomnia.Messaging.Sagas.Persistence.Retention;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 
 public static class SqlServerMessagingBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseSqlServer(this AsyncomniaMessagingBuilder builder, Action<SqlServerOptions> configure)
+    public static AsyncomniaMessagingBuilder UseSqlServer(this AsyncomniaMessagingBuilder builder, Action<SqlServerBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
 
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SqlServerOptions>, SqlServerOptionsValidator>());
+        var sqlServer = new SqlServerBuilder(builder.Services);
 
-        builder.Services.AddOptions<SqlServerOptions>().Configure(configure).ValidateOnStart();
+        // Configure adapters first so their registrations take precedence over defaults.
+        configure(sqlServer);
+
+        sqlServer.EnsureConnectionSourceConfigured();
 
         builder.Services.TryAddScoped<SqlServerMigrator>();
 
         builder.Services.TryAddScoped<IOutboxStore, SqlServerOutboxStore>();
         builder.Services.TryAddScoped<IOutboxWriter, SqlServerOutboxWriter>();
-
         builder.Services.TryAddScoped<IInboxWriter, SqlServerInboxWriter>();
+
         builder.Services.TryAddScoped<IDbTransactionAccessor, StandaloneDbTransactionAccessor>();
 
         builder.Services.TryAddScoped<IInboxCleanupStore, SqlServerInboxCleanupStore>();
-
         builder.Services.TryAddScoped<IDelayedMessageWriter, SqlServerDelayedMessageWriter>();
         builder.Services.TryAddScoped<IDelayedMessageStore, SqlServerDelayedMessageStore>();
 
-        // open generic registration, when someone will ask for ISagaRepository<T> .net will automatically
-        // close generic and will return appropriate class
         builder.Services.TryAddScoped(typeof(ISagaRepository<>), typeof(SqlServerSagaRepository<>));
         builder.Services.TryAddScoped<ISagaCleanupStore, SqlServerSagaCleanupStore>();
 

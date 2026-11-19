@@ -2,14 +2,14 @@
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 
-internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) : IOutboxStore
+internal sealed class SqlServerOutboxStore(ISqlServerConnectionFactory connectionFactory) : IOutboxStore
 {
-    private readonly SqlServerOptions _options = options.Value;
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task<IReadOnlyList<ClaimedOutboxMessage>> ClaimAsync(int batchSize, TimeSpan leaseDuration, CancellationToken token = default)
     {
@@ -63,8 +63,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) :
                 inserted.AttemptNumber,
                 inserted.LeaseExpiresAt";
 
-        await using var connection = new SqlConnection(_options.ConnectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -107,8 +106,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) :
                   ProcessedAt IS NULL AND
                   FailedAt IS NULL";
 
-        await using var connection = new SqlConnection(_options.ConnectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -135,8 +133,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) :
                   ProcessedAt IS NULL AND 
                   FailedAt IS NULL";
 
-        await using var connection = new SqlConnection(_options.ConnectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -167,8 +164,7 @@ internal sealed class SqlServerOutboxStore(IOptions<SqlServerOptions> options) :
                   ProcessedAt IS NULL
                   AND FailedAt IS NULL";
 
-        await using var connection = new SqlConnection(_options.ConnectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;

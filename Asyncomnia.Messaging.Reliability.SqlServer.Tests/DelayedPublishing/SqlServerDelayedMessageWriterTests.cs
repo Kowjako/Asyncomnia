@@ -1,10 +1,8 @@
 using System.Data;
 using Asyncomnia.Messaging.Reliability.DelayedPublishing;
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.DelayedPublishing;
 
@@ -14,11 +12,11 @@ public sealed class SqlServerDelayedMessageWriterTests
     public void Constructor_WhenTransactionAccessorIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new SqlServerDelayedMessageWriter(null!, CreateOptions()));
+            new SqlServerDelayedMessageWriter(null!, new TestSqlServerConnectionFactory()));
     }
 
     [Fact]
-    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    public void Constructor_WhenConnectionFactoryIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new SqlServerDelayedMessageWriter(new TestUnitOfWork(), null!));
@@ -128,7 +126,9 @@ public sealed class SqlServerDelayedMessageWriterTests
 
     private static SqlServerDelayedMessageWriter CreateWriter(TestUnitOfWork unitOfWork)
     {
-        return new SqlServerDelayedMessageWriter(unitOfWork, CreateOptions());
+        return new SqlServerDelayedMessageWriter(
+            unitOfWork,
+            new TestSqlServerConnectionFactory());
     }
 
     private static DelayedMessage CreateMessage()
@@ -143,14 +143,6 @@ public sealed class SqlServerDelayedMessageWriterTests
             Guid.NewGuid(),
             createdAt,
             createdAt.AddMinutes(30));
-    }
-
-    private static IOptions<SqlServerOptions> CreateOptions()
-    {
-        return Options.Create(new SqlServerOptions
-        {
-            ConnectionString = "Server=localhost;Database=AsyncomniaTests"
-        });
     }
 
     private sealed class TestDbTransaction(IDbConnection? connection) : IDbTransaction

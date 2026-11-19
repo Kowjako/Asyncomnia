@@ -1,14 +1,13 @@
 ﻿using Asyncomnia.Messaging.Reliability.Inbox.Storage;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
 
-internal sealed class SqlServerInboxCleanupStore(IOptions<SqlServerOptions> options) : IInboxCleanupStore
+internal sealed class SqlServerInboxCleanupStore(ISqlServerConnectionFactory connectionFactory) : IInboxCleanupStore
 {
-    private readonly string _connectionString = options?.Value.ConnectionString
-        ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task<int> DeleteExpiredAsync(DateTimeOffset expiresBefore, int batchSize, CancellationToken token = default)
     {
@@ -28,8 +27,7 @@ internal sealed class SqlServerInboxCleanupStore(IOptions<SqlServerOptions> opti
 
             SELECT @@ROWCOUNT";
 
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await using var command = connection.CreateCommand();
 

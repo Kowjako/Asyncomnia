@@ -1,7 +1,7 @@
-﻿using Asyncomnia.Messaging.Configuration;
-using Asyncomnia.Messaging.Reliability.DelayedPublishing;
+﻿using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Outbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
@@ -12,7 +12,7 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 
 public static class AdoNetMessagingBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseAdoNet<TTransaction>(this AsyncomniaMessagingBuilder builder)
+    public static SqlServerBuilder UseAdoNet<TTransaction>(this SqlServerBuilder builder)
         where TTransaction : class, IInboundTransaction, IDbTransactionAccessor
     {
         ArgumentNullException.ThrowIfNull(builder);

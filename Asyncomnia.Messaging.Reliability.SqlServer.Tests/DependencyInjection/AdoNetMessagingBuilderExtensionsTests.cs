@@ -15,12 +15,19 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.DependencyInjection;
 public sealed class AdoNetMessagingBuilderExtensionsTests
 {
     [Fact]
-    public void UseAdoNet_ReturnsSameMessagingBuilder()
+    public void UseAdoNet_WhenBuilderIsNull_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            AdoNetMessagingBuilderExtensions.UseAdoNet<TestUnitOfWork>(null!));
+    }
+
+    [Fact]
+    public void UseAdoNet_ReturnsSameSqlServerBuilder()
     {
         var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
+        var builder = new SqlServerBuilder(services);
 
-        var returnedBuilder = builder.UseAdoNet<ITestUnitOfWork>();
+        var returnedBuilder = builder.UseAdoNet<TestUnitOfWork>();
 
         Assert.Same(builder, returnedBuilder);
     }
@@ -29,10 +36,10 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
     public void UseAdoNet_CalledTwice_LeavesSingleWriterAndTransactionRegistrations()
     {
         var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
+        var builder = new SqlServerBuilder(services);
 
-        builder.UseAdoNet<ITestUnitOfWork>();
-        builder.UseAdoNet<ITestUnitOfWork>();
+        builder.UseAdoNet<TestUnitOfWork>();
+        builder.UseAdoNet<TestUnitOfWork>();
 
         AssertSingleScopedWriter(services);
         AssertSingleScopedDelayedMessageWriter(services);
@@ -41,19 +48,34 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseAdoNet_AfterUseSqlServer_ReplacesStandaloneAccessorAndUsesSqlServerWriter()
+    public void UseSqlServer_WithUseAdoNet_ReplacesStandaloneAccessorAndUsesSqlServerWriter()
     {
         var services = new ServiceCollection();
+        services.AddScoped<ITestUnitOfWork, TestUnitOfWork>();
         var builder = services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(Configure);
-
-        builder.UseAdoNet<ITestUnitOfWork>();
+            .UseSqlServer(sql =>
+            {
+                Configure(sql);
+                sql.UseAdoNet<ITestUnitOfWork>();
+            });
 
         AssertSingleScopedWriter(services);
         AssertSingleScopedDelayedMessageWriter(services);
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
+    }
+
+    [Fact]
+    public void UseAdoNet_WhenInterfaceTransactionIsNotRegistered_ThrowsInvalidOperationException()
+    {
+        var builder = new SqlServerBuilder(new ServiceCollection());
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            builder.UseAdoNet<ITestUnitOfWork>());
+
+        Assert.Contains(typeof(ITestUnitOfWork).FullName!, exception.Message);
+        Assert.Contains("must be registered", exception.Message);
     }
 
     [Fact]
@@ -63,8 +85,11 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
         services.AddScoped<ITestUnitOfWork, TestUnitOfWork>();
         services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(Configure)
-            .UseAdoNet<ITestUnitOfWork>();
+            .UseSqlServer(sql =>
+            {
+                Configure(sql);
+                sql.UseAdoNet<ITestUnitOfWork>();
+            });
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
@@ -76,9 +101,9 @@ public sealed class AdoNetMessagingBuilderExtensionsTests
         Assert.Same(unitOfWork, transactionAccessor);
     }
 
-    private static void Configure(SqlServerOptions options)
+    private static void Configure(SqlServerBuilder builder)
     {
-        options.ConnectionString = "test-connection-string";
+        builder.UseConnectionString("test-connection-string");
     }
 
     private static void AssertSingleScopedWriter(IServiceCollection services)

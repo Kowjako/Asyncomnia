@@ -126,9 +126,8 @@ public sealed class EntityFrameworkCoreSagaRepositoryIntegrationTests : IAsyncLi
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(options =>
-                options.ConnectionString = _connectionString)
-            .UseEntityFrameworkCore<IntegrationDbContext>();
+            .UseSqlServer(sql =>
+                sql.UseEntityFrameworkCore<IntegrationDbContext>());
 
         _host = builder.Build();
 

@@ -1,13 +1,12 @@
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.Sagas.Retention;
-using Microsoft.Extensions.Options;
+using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.Sagas;
 
 public sealed class SqlServerSagaCleanupStoreTests
 {
     [Fact]
-    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    public void Constructor_WhenConnectionFactoryIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new SqlServerSagaCleanupStore(null!));
@@ -43,10 +42,6 @@ public sealed class SqlServerSagaCleanupStoreTests
 
     private static SqlServerSagaCleanupStore CreateStore()
     {
-        return new SqlServerSagaCleanupStore(
-            Options.Create(new SqlServerOptions
-            {
-                ConnectionString = "Server=localhost;Database=AsyncomniaTests"
-            }));
+        return new SqlServerSagaCleanupStore(new TestSqlServerConnectionFactory());
     }
 }

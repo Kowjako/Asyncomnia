@@ -5,11 +5,13 @@ using Asyncomnia.Messaging.Reliability.Inbox;
 using Asyncomnia.Messaging.Reliability.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
-using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DelayedPublishing;
+using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.DependencyInjection;
+using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Infrastructure;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Inbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests.TestDoubles;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,24 +21,41 @@ namespace Asyncomnia.Messaging.Reliability.SqlServer.EFCore.Tests.DependencyInje
 public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
 {
     [Fact]
-    public void UseEntityFrameworkCore_ReturnsSameMessagingBuilder()
+    public void UseEntityFrameworkCore_WhenBuilderIsNull_ThrowsArgumentNullException()
     {
-        var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
-
-        var returnedBuilder = builder.UseEntityFrameworkCore<TestDbContext>();
-
-        Assert.Same(builder, returnedBuilder);
+        Assert.Throws<ArgumentNullException>(() =>
+            EntityFrameworkCoreMessagingBuilderExtensions
+                .UseEntityFrameworkCore<TestDbContext>(null!));
     }
 
     [Fact]
-    public void UseEntityFrameworkCore_CalledTwice_LeavesSingleWriterAndTransactionRegistrations()
+    public void UseEntityFrameworkCore_ReturnsSameSqlServerBuilder()
     {
         var services = new ServiceCollection();
-        var builder = services.AddAsyncomniaMessaging();
+        SqlServerBuilder? configuredBuilder = null;
 
-        builder.UseEntityFrameworkCore<TestDbContext>();
-        builder.UseEntityFrameworkCore<TestDbContext>();
+        services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+        {
+            configuredBuilder = sql;
+
+            var returnedBuilder = sql.UseEntityFrameworkCore<TestDbContext>();
+
+            Assert.Same(sql, returnedBuilder);
+        });
+
+        Assert.NotNull(configuredBuilder);
+    }
+
+    [Fact]
+    public void UseEntityFrameworkCore_CalledTwice_LeavesSingleAdapterRegistrationSet()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+        {
+            sql.UseEntityFrameworkCore<TestDbContext>();
+            sql.UseEntityFrameworkCore<TestDbContext>();
+        });
 
         AssertEntityFrameworkCoreWriter(services);
         AssertEntityFrameworkCoreDelayedMessageWriter(services);
@@ -46,50 +65,67 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
                 typeof(EntityFrameworkCoreInboundTransaction<TestDbContext>));
         AssertSingleScopedFactory<IInboundTransaction>(services);
         AssertSingleScopedFactory<IDbTransactionAccessor>(services);
+        AssertSingleScopedRegistration<ISqlServerConnectionFactory>(
+            services,
+            typeof(EntityFrameworkCoreSqlServerConnectionFactory<TestDbContext>));
     }
 
     [Fact]
-    public void UseEntityFrameworkCore_AfterUseSqlServer_ReplacesDefaultSqlServerWriter()
+    public void UseEntityFrameworkCore_WithDifferentDbContextsAndNoExplicitConnectionString_ThrowsInvalidOperationException()
     {
         var services = new ServiceCollection();
-        var builder = services
-            .AddAsyncomniaMessaging()
-            .UseSqlServer(Configure);
 
-        builder.UseEntityFrameworkCore<TestDbContext>();
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+            {
+                sql.UseEntityFrameworkCore<TestDbContext>();
+                sql.UseEntityFrameworkCore<UnconfiguredDbContext>();
+            }));
 
-        AssertEntityFrameworkCoreWriter(services);
-        AssertEntityFrameworkCoreDelayedMessageWriter(services);
-        AssertSingleScopedFactory<IInboundTransaction>(services);
-        AssertSingleScopedFactory<IDbTransactionAccessor>(services);
+        Assert.Contains("connection source has already been configured", exception.Message);
     }
 
-    [Fact]
-    public void UseSqlServer_AfterUseEntityFrameworkCore_DoesNotReplaceEntityFrameworkCoreServices()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UseConnectionString_AndUseEntityFrameworkCore_ExplicitConnectionStringWins(
+        bool connectionStringFirst)
     {
         var services = new ServiceCollection();
-        var builder = services
-            .AddAsyncomniaMessaging()
-            .UseEntityFrameworkCore<TestDbContext>();
 
-        builder.UseSqlServer(Configure);
+        services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+        {
+            if (connectionStringFirst)
+            {
+                sql.UseConnectionString("Server=localhost;Database=AsyncomniaTests");
+                sql.UseEntityFrameworkCore<TestDbContext>();
+            }
+            else
+            {
+                sql.UseEntityFrameworkCore<TestDbContext>();
+                sql.UseConnectionString("Server=localhost;Database=AsyncomniaTests");
+            }
+        });
 
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ISqlServerConnectionFactory));
+        Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+        Assert.IsType<ConnectionStringSqlServerConnectionFactory>(registration.ImplementationInstance);
         AssertEntityFrameworkCoreWriter(services);
         AssertEntityFrameworkCoreDelayedMessageWriter(services);
-        AssertSingleScopedFactory<IInboundTransaction>(services);
-        AssertSingleScopedFactory<IDbTransactionAccessor>(services);
     }
 
     [Fact]
     public void UseAdoNet_AfterUseEntityFrameworkCore_ReplacesWriterAndTransactionServices()
     {
         var services = new ServiceCollection();
-        var builder = services
-            .AddAsyncomniaMessaging()
-            .UseSqlServer(Configure)
-            .UseEntityFrameworkCore<TestDbContext>();
 
-        builder.UseAdoNet<TestInboundTransaction>();
+        services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+        {
+            sql.UseEntityFrameworkCore<TestDbContext>();
+            sql.UseAdoNet<TestInboundTransaction>();
+        });
 
         var writerRegistration = Assert.Single(
             services,
@@ -112,10 +148,11 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         var services = new ServiceCollection();
         services.AddDbContext<TestDbContext>(options =>
             options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
-        services
-            .AddAsyncomniaMessaging()
-            .UseSqlServer(Configure)
-            .UseEntityFrameworkCore<TestDbContext>();
+        services.AddAsyncomniaMessaging().UseSqlServer(sql =>
+        {
+            sql.UseConnectionString("Server=localhost;Database=AsyncomniaTests");
+            sql.UseEntityFrameworkCore<TestDbContext>();
+        });
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
@@ -124,11 +161,6 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
 
         Assert.Same(inboundTransaction, transactionAccessor);
         Assert.IsType<EntityFrameworkCoreInboundTransaction<TestDbContext>>(inboundTransaction);
-    }
-
-    private static void Configure(SqlServerOptions options)
-    {
-        options.ConnectionString = "test-connection-string";
     }
 
     private static void AssertEntityFrameworkCoreWriter(IServiceCollection services)
@@ -152,6 +184,17 @@ public sealed class EntityFrameworkCoreMessagingBuilderExtensionsTests
         Assert.Equal(
             typeof(EntityFrameworkCoreDelayedMessageWriter<TestDbContext>),
             registration.ImplementationType);
+    }
+
+    private static void AssertSingleScopedRegistration<TService>(
+        IServiceCollection services,
+        Type implementationType)
+    {
+        var registration = Assert.Single(
+            services,
+            descriptor => descriptor.ServiceType == typeof(TService));
+        Assert.Equal(ServiceLifetime.Scoped, registration.Lifetime);
+        Assert.Equal(implementationType, registration.ImplementationType);
     }
 
     private static void AssertSingleScopedFactory<TService>(IServiceCollection services)

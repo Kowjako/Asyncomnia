@@ -8,6 +8,7 @@ using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Inbox;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Migrations;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox.Retention;
@@ -18,12 +19,27 @@ using Asyncomnia.Messaging.Sagas.Persistence;
 using Asyncomnia.Messaging.Sagas.Persistence.Retention;
 using Asyncomnia.Messaging.Sagas.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.DependencyInjection;
 
 public sealed class SqlServerMessagingBuilderExtensionsTests
 {
+    [Fact]
+    public void UseSqlServer_WhenBuilderIsNull_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            SqlServerMessagingBuilderExtensions.UseSqlServer(null!, _ => { }));
+    }
+
+    [Fact]
+    public void UseSqlServer_WhenConfigureIsNull_ThrowsArgumentNullException()
+    {
+        var builder = new ServiceCollection().AddAsyncomniaMessaging();
+
+        Assert.Throws<ArgumentNullException>(() =>
+            builder.UseSqlServer(null!));
+    }
+
     [Fact]
     public void UseSqlServer_ReturnsSameMessagingBuilder()
     {
@@ -62,7 +78,7 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
             nameof(SqlServerSagaCleanupStore));
         Assert.Single(
             services,
-            descriptor => descriptor.ServiceType == typeof(IValidateOptions<SqlServerOptions>));
+            descriptor => descriptor.ServiceType == typeof(ISqlServerConnectionFactory));
     }
 
     [Fact]
@@ -80,20 +96,20 @@ public sealed class SqlServerMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseSqlServer_WithConfiguration_UsesConfiguredConnectionString()
+    public void UseSqlServer_WithoutConnectionSource_ThrowsInvalidOperationException()
     {
         var services = new ServiceCollection();
-        services.AddAsyncomniaMessaging().UseSqlServer(Configure);
-        using var provider = services.BuildServiceProvider();
+        var builder = services.AddAsyncomniaMessaging();
 
-        var options = provider.GetRequiredService<IOptions<SqlServerOptions>>().Value;
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            builder.UseSqlServer(_ => { }));
 
-        Assert.Equal("test-connection-string", options.ConnectionString);
+        Assert.Contains("SQL Server connection source is not configured", exception.Message);
     }
 
-    private static void Configure(SqlServerOptions options)
+    private static void Configure(SqlServerBuilder builder)
     {
-        options.ConnectionString = "test-connection-string";
+        builder.UseConnectionString("test-connection-string");
     }
 
     private static void AssertSingleScopedRegistration<TService>(

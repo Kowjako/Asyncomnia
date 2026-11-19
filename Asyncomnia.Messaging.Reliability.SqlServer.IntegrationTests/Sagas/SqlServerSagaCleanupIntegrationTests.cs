@@ -161,8 +161,7 @@ public sealed class SqlServerSagaCleanupIntegrationTests : IAsyncLifetime
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(options =>
-                options.ConnectionString = _connectionString);
+            .UseSqlServer(sql => sql.UseConnectionString(_connectionString));
 
         _host = builder.Build();
 

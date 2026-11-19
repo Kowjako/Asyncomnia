@@ -1,15 +1,15 @@
 ﻿using System.Data;
 using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 
-internal sealed class SqlServerDelayedMessageStore(IOptions<SqlServerOptions> options) : IDelayedMessageStore
+internal sealed class SqlServerDelayedMessageStore(ISqlServerConnectionFactory connectionFactory) : IDelayedMessageStore
 {
-    private readonly string _connectionString = options?.Value.ConnectionString
-        ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     private const string MoveDueSql = $@"
         DECLARE @OutboxAvailableAt datetimeoffset(7) = SYSUTCDATETIME();
@@ -77,8 +77,7 @@ internal sealed class SqlServerDelayedMessageStore(IOptions<SqlServerOptions> op
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
 
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 
         try

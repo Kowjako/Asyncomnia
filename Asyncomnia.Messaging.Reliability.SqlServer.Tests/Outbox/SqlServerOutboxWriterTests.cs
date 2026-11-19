@@ -1,10 +1,8 @@
 using System.Data;
 using Asyncomnia.Messaging.Reliability.Outbox;
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox;
 using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.Outbox;
 
@@ -14,11 +12,11 @@ public sealed class SqlServerOutboxWriterTests
     public void Constructor_WhenTransactionAccessorIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new SqlServerOutboxWriter(null!, CreateOptions()));
+            new SqlServerOutboxWriter(null!, new TestSqlServerConnectionFactory()));
     }
 
     [Fact]
-    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    public void Constructor_WhenConnectionFactoryIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new SqlServerOutboxWriter(new TestUnitOfWork(), null!));
@@ -27,7 +25,9 @@ public sealed class SqlServerOutboxWriterTests
     [Fact]
     public async Task WriteAsync_WhenMessageIsNull_ThrowsArgumentNullException()
     {
-        var writer = new SqlServerOutboxWriter(new TestUnitOfWork(), CreateOptions());
+        var writer = new SqlServerOutboxWriter(
+            new TestUnitOfWork(),
+            new TestSqlServerConnectionFactory());
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => writer.WriteAsync(null!));
     }
@@ -39,7 +39,7 @@ public sealed class SqlServerOutboxWriterTests
         {
             CurrentTransaction = new TestDbTransaction(null)
         };
-        var writer = new SqlServerOutboxWriter(unitOfWork, CreateOptions());
+        var writer = new SqlServerOutboxWriter(unitOfWork, new TestSqlServerConnectionFactory());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             writer.WriteAsync(CreateMessage()));
@@ -55,7 +55,7 @@ public sealed class SqlServerOutboxWriterTests
         {
             CurrentTransaction = new TestDbTransaction(connection)
         };
-        var writer = new SqlServerOutboxWriter(unitOfWork, CreateOptions());
+        var writer = new SqlServerOutboxWriter(unitOfWork, new TestSqlServerConnectionFactory());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             writer.WriteAsync(CreateMessage()));
@@ -66,7 +66,9 @@ public sealed class SqlServerOutboxWriterTests
     [Fact]
     public async Task WriteAsync_WhenCancellationIsRequested_ThrowsOperationCanceledException()
     {
-        var writer = new SqlServerOutboxWriter(new TestUnitOfWork(), CreateOptions());
+        var writer = new SqlServerOutboxWriter(
+            new TestUnitOfWork(),
+            new TestSqlServerConnectionFactory());
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -82,14 +84,6 @@ public sealed class SqlServerOutboxWriterTests
             "{\"orderId\":42}",
             Guid.NewGuid(),
             new DateTimeOffset(2026, 11, 6, 10, 30, 0, TimeSpan.Zero));
-    }
-
-    private static IOptions<SqlServerOptions> CreateOptions()
-    {
-        return Options.Create(new SqlServerOptions
-        {
-            ConnectionString = "Server=localhost;Database=AsyncomniaTests"
-        });
     }
 
     private sealed class TestDbTransaction(IDbConnection? connection) : IDbTransaction

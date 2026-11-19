@@ -360,8 +360,11 @@ public sealed class SqlServerSagaRepositoryIntegrationTests : IAsyncLifetime
 
         builder.Services
             .AddAsyncomniaMessaging()
-            .UseSqlServer(options => options.ConnectionString = _connectionString)
-            .UseAdoNet<IIntegrationUnitOfWork>();
+            .UseSqlServer(sql =>
+            {
+                sql.UseConnectionString(_connectionString);
+                sql.UseAdoNet<IIntegrationUnitOfWork>();
+            });
 
         _host = builder.Build();
 

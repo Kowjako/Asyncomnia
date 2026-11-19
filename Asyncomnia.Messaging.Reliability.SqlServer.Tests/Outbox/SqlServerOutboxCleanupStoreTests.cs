@@ -1,13 +1,12 @@
-using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
 using Asyncomnia.Messaging.Reliability.SqlServer.Outbox.Retention;
-using Microsoft.Extensions.Options;
+using Asyncomnia.Messaging.Reliability.SqlServer.Tests.TestDoubles;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.Tests.Outbox;
 
 public sealed class SqlServerOutboxCleanupStoreTests
 {
     [Fact]
-    public void Constructor_WhenOptionsAreNull_ThrowsArgumentNullException()
+    public void Constructor_WhenConnectionFactoryIsNull_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new SqlServerOutboxCleanupStore(null!));
@@ -60,10 +59,6 @@ public sealed class SqlServerOutboxCleanupStoreTests
 
     private static SqlServerOutboxCleanupStore CreateStore()
     {
-        return new SqlServerOutboxCleanupStore(
-            Options.Create(new SqlServerOptions
-            {
-                ConnectionString = "Server=localhost;Database=AsyncomniaTests"
-            }));
+        return new SqlServerOutboxCleanupStore(new TestSqlServerConnectionFactory());
     }
 }

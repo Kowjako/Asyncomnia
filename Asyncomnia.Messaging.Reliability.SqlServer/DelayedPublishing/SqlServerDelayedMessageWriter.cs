@@ -2,13 +2,12 @@
 using System.Data.Common;
 using Asyncomnia.Messaging.Reliability.DelayedPublishing;
 using Asyncomnia.Messaging.Reliability.SqlServer.Configuration;
+using Asyncomnia.Messaging.Reliability.SqlServer.Infrastructure.Connection;
 using Asyncomnia.Messaging.Reliability.SqlServer.Transactions;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.Reliability.SqlServer.DelayedPublishing;
 
-internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor transactionAccessor, IOptions<SqlServerOptions> options)
+internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor transactionAccessor, ISqlServerConnectionFactory connectionFactory)
     : IDelayedMessageWriter
 {
     private const string InsertSql = $@"
@@ -40,8 +39,8 @@ internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor trans
     private readonly IDbTransactionAccessor _transactionAccessor = transactionAccessor
         ?? throw new ArgumentNullException(nameof(transactionAccessor));
 
-    private readonly string _connectionString = options?.Value.ConnectionString
-        ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISqlServerConnectionFactory _connectionFactory = connectionFactory
+        ?? throw new ArgumentNullException(nameof(connectionFactory));
 
     public async Task<bool> CancelAsync(Guid scheduleId, CancellationToken token = default)
     {
@@ -76,8 +75,7 @@ internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor trans
 
     private async Task<bool> CancelStandaloneAsync(Guid scheduleId, CancellationToken token)
     {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         return await ExecuteCancelAsync(connection, transaction: null, scheduleId, token);
     }
@@ -97,8 +95,7 @@ internal sealed class SqlServerDelayedMessageWriter(IDbTransactionAccessor trans
 
     private async Task WriteStandaloneAsync(DelayedMessage message, CancellationToken token)
     {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync(token);
+        await using var connection = await _connectionFactory.OpenConnectionAsync(token);
 
         await ExecuteInsertAsync(connection, transaction: null, message, token);
     }
