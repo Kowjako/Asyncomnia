@@ -57,10 +57,10 @@ public sealed class DelayedPublishingBuilderExtensionsTests
             services,
             descriptor => descriptor.ServiceType ==
                 typeof(IValidateOptions<DelayedPublishingOptions>));
-        Assert.Single(
-            services,
-            descriptor => descriptor.ServiceType ==
-                typeof(IValidateOptions<OutboxOptions>));
+        Assert.Equal(
+            2,
+            services.Count(descriptor => descriptor.ServiceType ==
+                typeof(IValidateOptions<OutboxOptions>)));
 
         var hostedServices = services
             .Where(descriptor => descriptor.ServiceType == typeof(IHostedService))
@@ -131,9 +131,10 @@ public sealed class DelayedPublishingBuilderExtensionsTests
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(OutboxCleanupProcessor));
-        Assert.Single(
-            services,
-            descriptor => descriptor.ServiceType == typeof(IValidateOptions<OutboxOptions>));
+        Assert.Equal(
+            2,
+            services.Count(descriptor => descriptor.ServiceType ==
+                typeof(IValidateOptions<OutboxOptions>)));
         Assert.Single(
             services,
             descriptor => descriptor.ServiceType == typeof(IHostedService) &&

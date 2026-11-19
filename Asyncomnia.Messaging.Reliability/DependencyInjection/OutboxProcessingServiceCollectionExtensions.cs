@@ -13,6 +13,7 @@ internal static class OutboxProcessingServiceCollectionExtensions
     public static IServiceCollection AddOutboxProcessing(this IServiceCollection services)
     {
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OutboxOptions>, OutboxOptionsValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OutboxOptions>, OutboxStorageOptionsValidator>());
         services.AddOptions<OutboxOptions>().ValidateOnStart();
 
         services.TryAddScoped<OutboxBatchProcessor>();

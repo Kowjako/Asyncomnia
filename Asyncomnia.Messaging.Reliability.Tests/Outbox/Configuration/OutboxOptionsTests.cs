@@ -1,8 +1,10 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
+using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Asyncomnia.Messaging.Reliability.Tests.Outbox.Configuration;
 
@@ -165,9 +167,70 @@ public sealed class OutboxOptionsTests
             exception.Failures);
     }
 
-    private static ServiceProvider CreateProvider(Action<OutboxOptions>? configure = null)
+    [Fact]
+    public void UseOutbox_WithoutStorageProvider_ThrowsValidationException()
+    {
+        using var provider = CreateProvider(
+            registerOutboxStore: false,
+            registerCleanupStore: false);
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = options.Value;
+        });
+
+        Assert.Contains(
+            "Outbox storage is not configured. Register a storage provider, for example by calling UseSqlServer(...).",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WithCleanupEnabledAndWithoutCleanupStore_ThrowsValidationException()
+    {
+        using var provider = CreateProvider(registerCleanupStore: false);
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = options.Value;
+        });
+
+        Assert.Contains(
+            "Outbox cleanup is enabled, but the configured storage provider does not support it. " +
+            "Register an IOutboxCleanupStore implementation or disable outbox cleanup.",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WithCleanupDisabled_DoesNotRequireCleanupStore()
+    {
+        using var provider = CreateProvider(
+            options => options.CleanupEnabled = false,
+            registerCleanupStore: false);
+
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
+
+        Assert.False(options.CleanupEnabled);
+    }
+
+    private static ServiceProvider CreateProvider(
+        Action<OutboxOptions>? configure = null,
+        bool registerOutboxStore = true,
+        bool registerCleanupStore = true)
     {
         var services = new ServiceCollection();
+
+        if (registerOutboxStore)
+        {
+            services.AddSingleton(Mock.Of<IOutboxStore>());
+        }
+
+        if (registerCleanupStore)
+        {
+            services.AddSingleton(Mock.Of<IOutboxCleanupStore>());
+        }
+
         var builder = services.AddAsyncomniaMessaging();
 
         if (configure is null)

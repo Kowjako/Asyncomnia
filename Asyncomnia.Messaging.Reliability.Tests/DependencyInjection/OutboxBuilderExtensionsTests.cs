@@ -53,7 +53,17 @@ public sealed class OutboxBuilderExtensionsTests
         builder.UseOutbox();
         builder.UseOutbox();
 
-        Assert.Single(services, x => x.ServiceType == typeof(IValidateOptions<OutboxOptions>));
+        var registrations = services
+            .Where(x => x.ServiceType == typeof(IValidateOptions<OutboxOptions>))
+            .ToArray();
+
+        Assert.Equal(2, registrations.Length);
+        Assert.Single(
+            registrations,
+            x => x.ImplementationType == typeof(OutboxOptionsValidator));
+        Assert.Single(
+            registrations,
+            x => x.ImplementationType == typeof(OutboxStorageOptionsValidator));
     }
 
     [Fact]
