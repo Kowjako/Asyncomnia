@@ -12,6 +12,8 @@ public static class OutboxBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.Services.TryAddSingleton<OutboxFeatureRegistration>();
+
         builder.Services.RemoveAll<IOutboundMessagePipeline>();
         builder.Services.AddScoped<IOutboundMessagePipeline, OutboxMessagePipeline>();
         builder.Services.AddOutboxProcessing();

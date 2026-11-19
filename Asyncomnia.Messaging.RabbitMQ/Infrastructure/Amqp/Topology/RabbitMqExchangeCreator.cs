@@ -6,23 +6,30 @@ namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 
 internal interface IRabbitMqExchangeCreator
 {
-    Task EnsureDeclaredAsync(string exchangeName, CancellationToken token = default);
+    Task EnsureDeclaredAsync(
+        string exchangeName,
+        bool useUnroutableFallback,
+        CancellationToken token = default);
 }
 
-internal sealed class RabbitMqExchangeCreator(IRabbitMqChannelFactory channelFactory) : IRabbitMqExchangeCreator
+internal sealed class RabbitMqExchangeCreator(IRabbitMqChannelFactory channelFactory,
+    IRabbitMqUnroutableTopologyCreator unroutableTopologyCreator) : IRabbitMqExchangeCreator
 {
     private readonly IRabbitMqChannelFactory _channelFactory = channelFactory
         ?? throw new ArgumentNullException(nameof(channelFactory));
 
-    private readonly ConcurrentDictionary<string, byte> _declaredExchanges = new(StringComparer.Ordinal);
+    private readonly IRabbitMqUnroutableTopologyCreator _unroutableTopologyCreator = unroutableTopologyCreator
+        ?? throw new ArgumentNullException(nameof(unroutableTopologyCreator));
+
+    private readonly ConcurrentDictionary<string, bool> _declaredExchanges = new(StringComparer.Ordinal);
 
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _declarationLocks = new(StringComparer.Ordinal);
 
-    public async Task EnsureDeclaredAsync(string exchangeName, CancellationToken token = default)
+    public async Task EnsureDeclaredAsync(string exchangeName, bool useUnroutableFallback, CancellationToken token = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exchangeName);
 
-        if (_declaredExchanges.ContainsKey(exchangeName))
+        if (CacheContainsExchange(exchangeName, useUnroutableFallback))
         {
             return;
         }
@@ -32,13 +39,13 @@ internal sealed class RabbitMqExchangeCreator(IRabbitMqChannelFactory channelFac
 
         try
         {
-            if (_declaredExchanges.ContainsKey(exchangeName))
+            if (CacheContainsExchange(exchangeName, useUnroutableFallback))
             {
                 return;
             }
 
-            await DeclareCoreAsync(exchangeName, token);
-            _declaredExchanges.TryAdd(exchangeName, 0);
+            await DeclareCoreAsync(exchangeName, useUnroutableFallback, token);
+            _declaredExchanges.TryAdd(exchangeName, useUnroutableFallback);
         }
         finally
         {
@@ -46,8 +53,28 @@ internal sealed class RabbitMqExchangeCreator(IRabbitMqChannelFactory channelFac
         }
     }
 
-    private async Task DeclareCoreAsync(string exchangeName, CancellationToken token)
+    private bool CacheContainsExchange(string exchangeName, bool useUnroutableFallback)
     {
+        if (!_declaredExchanges.TryGetValue(exchangeName, out var declaredWithFallback))
+        {
+            return false;
+        }
+
+        if (declaredWithFallback != useUnroutableFallback)
+        {
+            throw new InvalidOperationException($"RabbitMQ exchange '{exchangeName}' was already declared with a different unroutable fallback configuration.");
+        }
+
+        return true;
+    }
+
+    private async Task DeclareCoreAsync(string exchangeName, bool useUnroutableFallback, CancellationToken token)
+    {
+        if (useUnroutableFallback)
+        {
+            await _unroutableTopologyCreator.EnsureDeclaredAsync(token);
+        }
+
         await using var channel = await _channelFactory.CreateAsync(token: token);
 
         await channel.ExchangeDeclareAsync(
@@ -55,7 +82,7 @@ internal sealed class RabbitMqExchangeCreator(IRabbitMqChannelFactory channelFac
             type: ExchangeType.Topic,
             durable: true,
             autoDelete: false,
-            arguments: null,
+            arguments: RabbitMqExchangeArgumentsFactory.Create(useUnroutableFallback),
             passive: false,
             noWait: false,
             cancellationToken: token);

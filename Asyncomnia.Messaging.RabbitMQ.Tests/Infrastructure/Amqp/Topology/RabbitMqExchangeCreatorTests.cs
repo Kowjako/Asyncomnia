@@ -17,9 +17,12 @@ public sealed class RabbitMqExchangeCreatorTests
         var token = cancellationSource.Token;
         SetupChannelCreation(channelFactory, channel, token);
         SetupExchangeDeclaration(channel, "events/clients", token);
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
-        await creator.EnsureDeclaredAsync("events/clients", token);
+        await creator.EnsureDeclaredAsync(
+            "events/clients",
+            useUnroutableFallback: false,
+            token: token);
 
         channelFactory.VerifyAll();
         channel.VerifyAll();
@@ -33,10 +36,10 @@ public sealed class RabbitMqExchangeCreatorTests
         var channel = new Mock<IChannel>(MockBehavior.Strict);
         SetupChannelCreation(channelFactory, channel);
         SetupExchangeDeclaration(channel, "events/clients");
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
-        await creator.EnsureDeclaredAsync("events/clients");
-        await creator.EnsureDeclaredAsync("events/clients");
+        await creator.EnsureDeclaredAsync("events/clients", false);
+        await creator.EnsureDeclaredAsync("events/clients", false);
 
         channelFactory.Verify(
             x => x.CreateAsync(null, CancellationToken.None),
@@ -85,15 +88,15 @@ public sealed class RabbitMqExchangeCreatorTests
                 declarationStarted.TrySetResult();
                 return releaseDeclaration.Task;
             });
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         var firstDeclaration =
-            creator.EnsureDeclaredAsync("events/clients");
+            creator.EnsureDeclaredAsync("events/clients", false);
         await declarationStarted.Task.WaitAsync(
             TimeSpan.FromSeconds(5));
 
         var secondDeclaration =
-            creator.EnsureDeclaredAsync("events/clients");
+            creator.EnsureDeclaredAsync("events/clients", false);
 
         Assert.False(secondDeclaration.IsCompleted);
 
@@ -159,15 +162,17 @@ public sealed class RabbitMqExchangeCreatorTests
         secondChannel
             .Setup(x => x.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         var firstDeclaration =
-            creator.EnsureDeclaredAsync("events/clients");
+            creator.EnsureDeclaredAsync("events/clients", false);
         await firstDeclarationStarted.Task.WaitAsync(
             TimeSpan.FromSeconds(5));
 
         var secondDeclaration =
-            creator.EnsureDeclaredAsync("commands/long-work-job");
+            creator.EnsureDeclaredAsync(
+                "commands/long-work-job",
+                false);
         await secondDeclaration.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(firstDeclaration.IsCompleted);
@@ -216,11 +221,11 @@ public sealed class RabbitMqExchangeCreatorTests
         retryChannel
             .Setup(x => x.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => creator.EnsureDeclaredAsync("events/clients"));
-        await creator.EnsureDeclaredAsync("events/clients");
+            () => creator.EnsureDeclaredAsync("events/clients", false));
+        await creator.EnsureDeclaredAsync("events/clients", false);
 
         Assert.Same(declarationException, exception);
         channelFactory.Verify(
@@ -257,15 +262,16 @@ public sealed class RabbitMqExchangeCreatorTests
                 declarationStarted.TrySetResult();
                 return releaseDeclaration.Task;
             });
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
         using var cancellationSource = new CancellationTokenSource();
 
         var activeDeclaration =
-            creator.EnsureDeclaredAsync("events/clients");
+            creator.EnsureDeclaredAsync("events/clients", false);
         await declarationStarted.Task.WaitAsync(
             TimeSpan.FromSeconds(5));
         var waitingDeclaration = creator.EnsureDeclaredAsync(
             "events/clients",
+            false,
             cancellationSource.Token);
 
         cancellationSource.Cancel();
@@ -276,11 +282,122 @@ public sealed class RabbitMqExchangeCreatorTests
 
         releaseDeclaration.TrySetResult();
         await activeDeclaration;
-        await creator.EnsureDeclaredAsync("events/clients");
+        await creator.EnsureDeclaredAsync("events/clients", false);
 
         channelFactory.Verify(
             x => x.CreateAsync(null, CancellationToken.None),
             Times.Once);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task EnsureDeclaredAsync_WithUnroutableFallback_DeclaresFallbackBeforeExchange()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+        var sequence = new MockSequence();
+        unroutableTopologyCreator
+            .InSequence(sequence)
+            .Setup(x => x.EnsureDeclaredAsync(CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        channelFactory
+            .InSequence(sequence)
+            .Setup(x => x.CreateAsync(null, CancellationToken.None))
+            .ReturnsAsync(channel.Object);
+        channel
+            .InSequence(sequence)
+            .Setup(x => x.ExchangeDeclareAsync(
+                "events/clients",
+                ExchangeType.Topic,
+                true,
+                false,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasUnroutableFallback(arguments)),
+                false,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        channel
+            .Setup(x => x.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        var creator = CreateCreator(
+            channelFactory,
+            unroutableTopologyCreator);
+
+        await creator.EnsureDeclaredAsync(
+            "events/clients",
+            useUnroutableFallback: true);
+
+        unroutableTopologyCreator.VerifyAll();
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task EnsureDeclaredAsync_WhenUnroutableTopologyFails_DoesNotCreateExchangeChannel()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+        var expectedException =
+            new InvalidOperationException("unroutable topology failed");
+        unroutableTopologyCreator
+            .Setup(x => x.EnsureDeclaredAsync(CancellationToken.None))
+            .ThrowsAsync(expectedException);
+        var creator = CreateCreator(
+            channelFactory,
+            unroutableTopologyCreator);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.EnsureDeclaredAsync("events/clients", true));
+
+        Assert.Same(expectedException, exception);
+        channelFactory.VerifyNoOtherCalls();
+        unroutableTopologyCreator.VerifyAll();
+    }
+
+    [Fact]
+    public async Task EnsureDeclaredAsync_WhenCachedConfigurationDiffers_ThrowsWithoutRedeclaring()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+        unroutableTopologyCreator
+            .Setup(x => x.EnsureDeclaredAsync(CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        SetupChannelCreation(channelFactory, channel);
+        channel
+            .Setup(x => x.ExchangeDeclareAsync(
+                "events/clients",
+                ExchangeType.Topic,
+                true,
+                false,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasUnroutableFallback(arguments)),
+                false,
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var creator = CreateCreator(
+            channelFactory,
+            unroutableTopologyCreator);
+        await creator.EnsureDeclaredAsync("events/clients", true);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => creator.EnsureDeclaredAsync("events/clients", false));
+
+        Assert.Contains("different unroutable fallback", exception.Message);
+        channelFactory.Verify(
+            x => x.CreateAsync(null, CancellationToken.None),
+            Times.Once);
+        unroutableTopologyCreator.VerifyAll();
         channelFactory.VerifyAll();
         channel.VerifyAll();
     }
@@ -294,10 +411,10 @@ public sealed class RabbitMqExchangeCreatorTests
     {
         var channelFactory =
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
-        var creator = new RabbitMqExchangeCreator(channelFactory.Object);
+        var creator = CreateCreator(channelFactory);
 
         await Assert.ThrowsAnyAsync<ArgumentException>(
-            () => creator.EnsureDeclaredAsync(exchangeName!));
+            () => creator.EnsureDeclaredAsync(exchangeName!, false));
 
         channelFactory.VerifyNoOtherCalls();
     }
@@ -305,8 +422,37 @@ public sealed class RabbitMqExchangeCreatorTests
     [Fact]
     public void Constructor_WhenChannelFactoryIsNull_Throws()
     {
+        var unroutableTopologyCreator =
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+
         Assert.Throws<ArgumentNullException>(
-            () => new RabbitMqExchangeCreator(null!));
+            () => new RabbitMqExchangeCreator(
+                null!,
+                unroutableTopologyCreator.Object));
+    }
+
+    [Fact]
+    public void Constructor_WhenUnroutableTopologyCreatorIsNull_Throws()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+
+        Assert.Throws<ArgumentNullException>(
+            () => new RabbitMqExchangeCreator(
+                channelFactory.Object,
+                null!));
+    }
+
+    private static RabbitMqExchangeCreator CreateCreator(
+        Mock<IRabbitMqChannelFactory> channelFactory,
+        Mock<IRabbitMqUnroutableTopologyCreator>? unroutableTopologyCreator = null)
+    {
+        unroutableTopologyCreator ??=
+            new Mock<IRabbitMqUnroutableTopologyCreator>(MockBehavior.Strict);
+
+        return new RabbitMqExchangeCreator(
+            channelFactory.Object,
+            unroutableTopologyCreator.Object);
     }
 
     private static void SetupChannelCreation(
@@ -320,6 +466,15 @@ public sealed class RabbitMqExchangeCreatorTests
         channel
             .Setup(x => x.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
+    }
+
+    private static bool HasUnroutableFallback(
+        IDictionary<string, object?>? arguments)
+    {
+        return arguments is not null &&
+               arguments.Count == 1 &&
+               arguments.TryGetValue("alternate-exchange", out var value) &&
+               Equals(value, RabbitMqUnroutableDefaults.ExchangeName);
     }
 
     private static void SetupExchangeDeclaration(

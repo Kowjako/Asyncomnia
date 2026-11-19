@@ -294,6 +294,178 @@ public sealed class RabbitMqMessageConsumerTests
         errorDependencies.VerifyNoCalls();
     }
 
+    [Fact]
+    public async Task ConsumeAsync_WhenMessagesShareChannel_SerializesAcknowledgements()
+    {
+        var processedMessages = 0;
+        var bothMessagesProcessed = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
+        pipeline
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
+                CancellationToken.None))
+            .Callback<InboundMessageContext, CancellationToken>((_, _) =>
+            {
+                if (Interlocked.Increment(ref processedMessages) == 2)
+                {
+                    bothMessagesProcessed.TrySetResult(true);
+                }
+            })
+            .Returns(Task.CompletedTask);
+        await using var provider = CreateProvider(_ => pipeline.Object);
+        var errorDependencies = CreateErrorStrategy(deadLetteringEnabled: false);
+        var consumer = CreateConsumer(provider, errorDependencies.Strategy);
+        var firstAcknowledgementStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAcknowledgement = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var acknowledgementCalls = 0;
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicAckAsync(
+                It.IsAny<ulong>(),
+                false,
+                CancellationToken.None))
+            .Returns((ulong deliveryTag, bool multiple, CancellationToken token) =>
+            {
+                var call = Interlocked.Increment(ref acknowledgementCalls);
+
+                if (call == 1)
+                {
+                    firstAcknowledgementStarted.TrySetResult(true);
+                    return new ValueTask(releaseFirstAcknowledgement.Task);
+                }
+
+                return ValueTask.CompletedTask;
+            });
+
+        var firstConsume = consumer.ConsumeAsync(
+            channel.Object,
+            CreateSubscription(),
+            CreateDelivery(new ClientCreatedEvent("First"), deliveryTag: 1),
+            CancellationToken.None);
+        Task? secondConsume = null;
+
+        try
+        {
+            await firstAcknowledgementStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            secondConsume = consumer.ConsumeAsync(
+                channel.Object,
+                CreateSubscription(),
+                CreateDelivery(new ClientCreatedEvent("Second"), deliveryTag: 2),
+                CancellationToken.None);
+
+            await bothMessagesProcessed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, Volatile.Read(ref acknowledgementCalls));
+            Assert.False(secondConsume.IsCompleted);
+        }
+        finally
+        {
+            releaseFirstAcknowledgement.TrySetResult(true);
+            await firstConsume;
+
+            if (secondConsume is not null)
+            {
+                await secondConsume;
+            }
+        }
+
+        Assert.Equal(2, acknowledgementCalls);
+        pipeline.Verify(
+            x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
+                CancellationToken.None),
+            Times.Exactly(2));
+        channel.Verify(
+            x => x.BasicAckAsync(
+                It.IsAny<ulong>(),
+                false,
+                CancellationToken.None),
+            Times.Exactly(2));
+        errorDependencies.VerifyNoCalls();
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_WhenMessagesUseDifferentChannels_DoesNotSerializeAcknowledgements()
+    {
+        var pipeline = new Mock<IInboundMessagePipeline>(MockBehavior.Strict);
+        pipeline
+            .Setup(x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        await using var provider = CreateProvider(_ => pipeline.Object);
+        var errorDependencies = CreateErrorStrategy(deadLetteringEnabled: false);
+        var consumer = CreateConsumer(provider, errorDependencies.Strategy);
+        var firstAcknowledgementStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAcknowledgement = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAcknowledgementStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstChannel = new Mock<IChannel>(MockBehavior.Strict);
+        firstChannel
+            .Setup(x => x.BasicAckAsync(1, false, CancellationToken.None))
+            .Returns(() =>
+            {
+                firstAcknowledgementStarted.TrySetResult(true);
+                return new ValueTask(releaseFirstAcknowledgement.Task);
+            });
+        var secondChannel = new Mock<IChannel>(MockBehavior.Strict);
+        secondChannel
+            .Setup(x => x.BasicAckAsync(2, false, CancellationToken.None))
+            .Returns(() =>
+            {
+                secondAcknowledgementStarted.TrySetResult(true);
+                return ValueTask.CompletedTask;
+            });
+
+        var firstConsume = consumer.ConsumeAsync(
+            firstChannel.Object,
+            CreateSubscription(),
+            CreateDelivery(new ClientCreatedEvent("First"), deliveryTag: 1),
+            CancellationToken.None);
+        Task? secondConsume = null;
+
+        try
+        {
+            await firstAcknowledgementStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            secondConsume = consumer.ConsumeAsync(
+                secondChannel.Object,
+                CreateSubscription(),
+                CreateDelivery(new ClientCreatedEvent("Second"), deliveryTag: 2),
+                CancellationToken.None);
+
+            await secondAcknowledgementStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await secondConsume.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.False(firstConsume.IsCompleted);
+        }
+        finally
+        {
+            releaseFirstAcknowledgement.TrySetResult(true);
+            await firstConsume;
+
+            if (secondConsume is not null)
+            {
+                await secondConsume;
+            }
+        }
+
+        pipeline.Verify(
+            x => x.HandleEventAsync<ClientCreatedEvent>(
+                It.IsAny<InboundMessageContext>(),
+                CancellationToken.None),
+            Times.Exactly(2));
+        firstChannel.VerifyAll();
+        secondChannel.VerifyAll();
+        errorDependencies.VerifyNoCalls();
+    }
+
     private static ServiceProvider CreateProvider(
         Func<IServiceProvider, IInboundMessagePipeline> pipelineFactory)
     {

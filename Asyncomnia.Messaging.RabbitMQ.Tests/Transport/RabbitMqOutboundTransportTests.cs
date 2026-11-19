@@ -1,10 +1,12 @@
 using Asyncomnia.Messaging.Internal.Serialization;
+using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Asyncomnia.Messaging.RabbitMQ.Transport;
+using Microsoft.Extensions.Options;
 using Moq;
 using RabbitMQ.Client;
 
@@ -46,6 +48,7 @@ public sealed class RabbitMqOutboundTransportTests
             .InSequence(sequence)
             .Setup(x => x.EnsureDeclaredAsync(
                 "events/clients",
+                true,
                 token))
             .Returns(Task.CompletedTask);
         publisher
@@ -118,6 +121,7 @@ public sealed class RabbitMqOutboundTransportTests
         exchangeCreator
             .Setup(x => x.EnsureDeclaredAsync(
                 "commands/long-work-job",
+                false,
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         publisher
@@ -165,6 +169,7 @@ public sealed class RabbitMqOutboundTransportTests
         exchangeCreator
             .Setup(x => x.EnsureDeclaredAsync(
                 "events/clients",
+                true,
                 CancellationToken.None))
             .ThrowsAsync(declarationException);
 
@@ -191,6 +196,7 @@ public sealed class RabbitMqOutboundTransportTests
         exchangeCreator
             .Setup(x => x.EnsureDeclaredAsync(
                 "events/clients",
+                true,
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         publisher
@@ -236,6 +242,41 @@ public sealed class RabbitMqOutboundTransportTests
     }
 
     [Fact]
+    public async Task DispatchAsync_ForEventWhenUnroutableCaptureIsDisabled_DeclaresExchangeWithoutFallback()
+    {
+        var exchangeCreator =
+            new Mock<IRabbitMqExchangeCreator>(MockBehavior.Strict);
+        var publisher =
+            new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
+        var transport = CreateTransport(
+            exchangeCreator,
+            publisher,
+            captureUnroutableEvents: false);
+        exchangeCreator
+            .Setup(x => x.EnsureDeclaredAsync(
+                "events/clients",
+                false,
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        publisher
+            .Setup(x => x.PublishAsync(
+                "events/clients",
+                "client-created-event",
+                false,
+                It.IsAny<BasicProperties>(),
+                It.IsAny<ReadOnlyMemory<byte>>(),
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+
+        await transport.DispatchAsync(
+            new ClientCreatedEvent("Acme"),
+            CreateMetadata());
+
+        exchangeCreator.VerifyAll();
+        publisher.VerifyAll();
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenCancellationWasAlreadyRequested_DoesNotUseTransportDependencies()
     {
         var exchangeCreator =
@@ -271,39 +312,58 @@ public sealed class RabbitMqOutboundTransportTests
                 null!,
                 serializer,
                 exchangeCreator.Object,
-                publisher.Object));
+                publisher.Object,
+                Options.Create(new RabbitMqOptions())));
         var serializerException = Assert.Throws<ArgumentNullException>(
             () => new RabbitMqOutboundTransport(
                 routeResolver,
                 null!,
                 exchangeCreator.Object,
-                publisher.Object));
+                publisher.Object,
+                Options.Create(new RabbitMqOptions())));
         var exchangeCreatorException = Assert.Throws<ArgumentNullException>(
             () => new RabbitMqOutboundTransport(
                 routeResolver,
                 serializer,
                 null!,
-                publisher.Object));
+                publisher.Object,
+                Options.Create(new RabbitMqOptions())));
         var publisherException = Assert.Throws<ArgumentNullException>(
             () => new RabbitMqOutboundTransport(
                 routeResolver,
                 serializer,
                 exchangeCreator.Object,
+                null!,
+                Options.Create(new RabbitMqOptions())));
+        var optionsException = Assert.Throws<ArgumentNullException>(
+            () => new RabbitMqOutboundTransport(
+                routeResolver,
+                serializer,
+                exchangeCreator.Object,
+                publisher.Object,
                 null!));
 
         Assert.Equal("msgRouteResolver", routeResolverException.ParamName);
         Assert.Equal("msgSerializer", serializerException.ParamName);
         Assert.Equal("exchangeCreator", exchangeCreatorException.ParamName);
         Assert.Equal("rabbitMqPublisher", publisherException.ParamName);
+        Assert.Equal("options", optionsException.ParamName);
     }
 
-    private static RabbitMqOutboundTransport CreateTransport(Mock<IRabbitMqExchangeCreator> exchangeCreator, Mock<IRabbitMqPublisher> publisher)
+    private static RabbitMqOutboundTransport CreateTransport(
+        Mock<IRabbitMqExchangeCreator> exchangeCreator,
+        Mock<IRabbitMqPublisher> publisher,
+        bool captureUnroutableEvents = true)
     {
         return new RabbitMqOutboundTransport(
             new MessageRouteResolver(),
             new MessageJsonSerializer(),
             exchangeCreator.Object,
-            publisher.Object);
+            publisher.Object,
+            Options.Create(new RabbitMqOptions
+            {
+                CaptureUnroutableEvents = captureUnroutableEvents
+            }));
     }
 
     private static MessageMetadata CreateMetadata()

@@ -1,8 +1,10 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
+using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Asyncomnia.Messaging.Reliability.Tests.Outbox.Configuration;
 
@@ -21,6 +23,11 @@ public sealed class OutboxOptionsTests
         Assert.Equal(TimeSpan.FromMinutes(1), options.LeaseDuration);
         Assert.Equal(TimeSpan.FromSeconds(5), options.RetryDelay);
         Assert.Equal(10, options.MaxAttempts);
+        Assert.True(options.CleanupEnabled);
+        Assert.Equal(TimeSpan.FromDays(7), options.ProcessedMessageRetention);
+        Assert.Null(options.FailedMessageRetention);
+        Assert.Equal(1000, options.CleanupBatchSize);
+        Assert.Equal(TimeSpan.FromMinutes(1), options.CleanupInterval);
     }
 
     [Fact]
@@ -34,6 +41,11 @@ public sealed class OutboxOptionsTests
             options.LeaseDuration = TimeSpan.FromMinutes(2);
             options.RetryDelay = TimeSpan.FromSeconds(9);
             options.MaxAttempts = 5;
+            options.CleanupEnabled = false;
+            options.ProcessedMessageRetention = TimeSpan.FromDays(3);
+            options.FailedMessageRetention = TimeSpan.FromDays(30);
+            options.CleanupBatchSize = 250;
+            options.CleanupInterval = TimeSpan.FromMinutes(5);
         });
 
         var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
@@ -44,6 +56,11 @@ public sealed class OutboxOptionsTests
         Assert.Equal(TimeSpan.FromMinutes(2), options.LeaseDuration);
         Assert.Equal(TimeSpan.FromSeconds(9), options.RetryDelay);
         Assert.Equal(5, options.MaxAttempts);
+        Assert.False(options.CleanupEnabled);
+        Assert.Equal(TimeSpan.FromDays(3), options.ProcessedMessageRetention);
+        Assert.Equal(TimeSpan.FromDays(30), options.FailedMessageRetention);
+        Assert.Equal(250, options.CleanupBatchSize);
+        Assert.Equal(TimeSpan.FromMinutes(5), options.CleanupInterval);
     }
 
     [Fact]
@@ -106,9 +123,114 @@ public sealed class OutboxOptionsTests
             exception.Failures);
     }
 
-    private static ServiceProvider CreateProvider(Action<OutboxOptions>? configure = null)
+    [Fact]
+    public void UseOutbox_WhenProcessedMessageRetentionIsNotPositive_ThrowsValidationException()
+    {
+        var exception = GetValidationException(options =>
+            options.ProcessedMessageRetention = TimeSpan.Zero);
+
+        Assert.Contains(
+            "OutboxOptions:ProcessedMessageRetention must be greater than zero",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WhenFailedMessageRetentionIsNotPositive_ThrowsValidationException()
+    {
+        var exception = GetValidationException(options =>
+            options.FailedMessageRetention = TimeSpan.Zero);
+
+        Assert.Contains(
+            "OutboxOptions:FailedMessageRetention must be greater than zero when configured",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WhenCleanupBatchSizeIsNotPositive_ThrowsValidationException()
+    {
+        var exception = GetValidationException(options =>
+            options.CleanupBatchSize = 0);
+
+        Assert.Contains(
+            "OutboxOptions:CleanupBatchSize must be greater than zero",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WhenCleanupIntervalIsNotPositive_ThrowsValidationException()
+    {
+        var exception = GetValidationException(options =>
+            options.CleanupInterval = TimeSpan.Zero);
+
+        Assert.Contains(
+            "OutboxOptions:CleanupInterval must be greater than zero",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WithoutStorageProvider_ThrowsValidationException()
+    {
+        using var provider = CreateProvider(
+            registerOutboxStore: false,
+            registerCleanupStore: false);
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = options.Value;
+        });
+
+        Assert.Contains(
+            "Outbox storage is not configured. Register a storage provider, for example by calling UseSqlServer(...).",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WithCleanupEnabledAndWithoutCleanupStore_ThrowsValidationException()
+    {
+        using var provider = CreateProvider(registerCleanupStore: false);
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+        {
+            _ = options.Value;
+        });
+
+        Assert.Contains(
+            "Outbox cleanup is enabled, but the configured storage provider does not support it. " +
+            "Register an IOutboxCleanupStore implementation or disable outbox cleanup.",
+            exception.Failures);
+    }
+
+    [Fact]
+    public void UseOutbox_WithCleanupDisabled_DoesNotRequireCleanupStore()
+    {
+        using var provider = CreateProvider(
+            options => options.CleanupEnabled = false,
+            registerCleanupStore: false);
+
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
+
+        Assert.False(options.CleanupEnabled);
+    }
+
+    private static ServiceProvider CreateProvider(
+        Action<OutboxOptions>? configure = null,
+        bool registerOutboxStore = true,
+        bool registerCleanupStore = true)
     {
         var services = new ServiceCollection();
+
+        if (registerOutboxStore)
+        {
+            services.AddSingleton(Mock.Of<IOutboxStore>());
+        }
+
+        if (registerCleanupStore)
+        {
+            services.AddSingleton(Mock.Of<IOutboxCleanupStore>());
+        }
+
         var builder = services.AddAsyncomniaMessaging();
 
         if (configure is null)

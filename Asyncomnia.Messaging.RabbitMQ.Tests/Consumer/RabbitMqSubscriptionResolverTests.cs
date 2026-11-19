@@ -35,6 +35,7 @@ public sealed class RabbitMqSubscriptionResolverTests
 
         var subscription = Assert.Single(subscriptions);
         Assert.Equal("events/clients", subscription.ExchangeName);
+        Assert.True(subscription.UseUnroutableFallback);
         Assert.Equal(
             "events/clients/subscription/auditing-service",
             subscription.QueueName);
@@ -67,6 +68,7 @@ public sealed class RabbitMqSubscriptionResolverTests
             subscription =>
             {
                 Assert.Equal("commands/long-work-job", subscription.ExchangeName);
+                Assert.False(subscription.UseUnroutableFallback);
                 Assert.Equal(
                     "commands/long-work-job/subscription/worker-service",
                     subscription.QueueName);
@@ -77,6 +79,7 @@ public sealed class RabbitMqSubscriptionResolverTests
             subscription =>
             {
                 Assert.Equal("events/clients", subscription.ExchangeName);
+                Assert.True(subscription.UseUnroutableFallback);
                 Assert.Equal(
                     "events/clients/subscription/worker-service",
                     subscription.QueueName);
@@ -164,11 +167,40 @@ public sealed class RabbitMqSubscriptionResolverTests
         Assert.Equal((ushort)1, @event.Settings.DispatcherConcurrency);
     }
 
+    [Fact]
+    public void Resolve_WhenUnroutableEventCaptureIsDisabled_DoesNotUseFallbackForEventExchange()
+    {
+        var resolver = CreateResolver(
+            eventTypes: [typeof(ClientCreatedEvent)],
+            captureUnroutableEvents: false);
+
+        var subscription = Assert.Single(resolver.Resolve());
+
+        Assert.False(subscription.UseUnroutableFallback);
+    }
+
+    [Fact]
+    public void Constructor_WhenRabbitMqOptionsAreNull_ThrowsArgumentNullException()
+    {
+        var catalog =
+            new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            new RabbitMqSubscriptionResolver(
+                catalog.Object,
+                new MessageRouteResolver(),
+                Options.Create(new RabbitMqConsumerOptions()),
+                null!));
+
+        Assert.Equal("rabbitMqOptions", exception.ParamName);
+    }
+
     private static RabbitMqSubscriptionResolver CreateResolver(
         IReadOnlyCollection<Type>? eventTypes = null,
         IReadOnlyCollection<Type>? commandTypes = null,
         string endpointName = "test-service",
-        Action<RabbitMqConsumerOptions>? configureOptions = null)
+        Action<RabbitMqConsumerOptions>? configureOptions = null,
+        bool captureUnroutableEvents = true)
     {
         var catalog = new Mock<IMessageHandlerCatalog>(MockBehavior.Strict);
         catalog
@@ -187,6 +219,10 @@ public sealed class RabbitMqSubscriptionResolverTests
         return new RabbitMqSubscriptionResolver(
             catalog.Object,
             new MessageRouteResolver(),
-            Options.Create(options));
+            Options.Create(options),
+            Options.Create(new RabbitMqOptions
+            {
+                CaptureUnroutableEvents = captureUnroutableEvents
+            }));
     }
 }

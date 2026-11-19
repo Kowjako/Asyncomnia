@@ -16,6 +16,8 @@ public static class InboxBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.Services.TryAddSingleton<InboxFeatureRegistration>();
+
         // Cleanup IInboundMessagePipeline registration which comes from AddAsyncomniaMessaging()
         builder.Services.RemoveAll<IInboundMessagePipeline>();
         builder.Services.TryAddScoped<HandlerMessagePipeline>();

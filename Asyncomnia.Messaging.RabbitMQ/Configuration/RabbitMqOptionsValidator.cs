@@ -22,6 +22,16 @@ internal sealed class RabbitMqOptionsValidator : IValidateOptions<RabbitMqOption
             return ValidateOptionsResult.Fail("RabbitMqOptions:PublisherChannelCount must be greater than 0");
         }
 
+        if (options.UnroutableQueueMaxLength <= 0)
+        {
+            return ValidateOptionsResult.Fail("RabbitMqOptions:UnroutableQueueMaxLength must be greater than 0");
+        }
+
+        if (options.UnroutableQueueMaxLengthBytes <= 0)
+        {
+            return ValidateOptionsResult.Fail("RabbitMqOptions:UnroutableQueueMaxLengthBytes must be greater than 0");
+        }
+
         return ValidateOptionsResult.Success;
     }
 }

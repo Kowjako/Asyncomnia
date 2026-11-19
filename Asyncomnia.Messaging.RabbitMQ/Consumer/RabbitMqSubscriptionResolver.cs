@@ -5,8 +5,11 @@ using Microsoft.Extensions.Options;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer;
 
-internal sealed class RabbitMqSubscriptionResolver(IMessageHandlerCatalog catalog, 
-    MessageRouteResolver routeResolver, IOptions<RabbitMqConsumerOptions> options)
+internal sealed class RabbitMqSubscriptionResolver(
+    IMessageHandlerCatalog catalog,
+    MessageRouteResolver routeResolver,
+    IOptions<RabbitMqConsumerOptions> options,
+    IOptions<RabbitMqOptions> rabbitMqOptions)
 {
     private readonly IMessageHandlerCatalog _handlerCatalog = catalog
         ?? throw new ArgumentNullException(nameof(catalog));
@@ -16,6 +19,9 @@ internal sealed class RabbitMqSubscriptionResolver(IMessageHandlerCatalog catalo
 
     private readonly RabbitMqConsumerOptions _options = options?.Value
         ?? throw new ArgumentNullException(nameof(options));
+
+    private readonly RabbitMqOptions _rabbitMqOptions = rabbitMqOptions?.Value
+        ?? throw new ArgumentNullException(nameof(rabbitMqOptions));
 
     public IReadOnlyCollection<RabbitMqSubscription> Resolve()
     {
@@ -32,7 +38,10 @@ internal sealed class RabbitMqSubscriptionResolver(IMessageHandlerCatalog catalo
                                  Bindings = g.Select(x => new RabbitMqBinding(x.Route.RoutingKey, x.MessageType))
                                              .OrderBy(x => x.RoutingKey, StringComparer.Ordinal)
                                              .ToArray(),
-                                 Settings = _options.GetSubscriptionSettings(g.Key)
+                                 Settings = _options.GetSubscriptionSettings(g.Key),
+                                 UseUnroutableFallback =
+                                     _rabbitMqOptions.CaptureUnroutableEvents &&
+                                     g.All(x => typeof(IEvent).IsAssignableFrom(x.MessageType))
                              })
                              .OrderBy(x => x.ExchangeName, StringComparer.Ordinal)
                              .ToArray();
