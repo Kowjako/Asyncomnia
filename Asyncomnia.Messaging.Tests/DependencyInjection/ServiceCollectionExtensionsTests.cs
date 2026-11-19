@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
@@ -11,6 +12,32 @@ namespace Asyncomnia.Messaging.Tests.DependencyInjection;
 
 public sealed class ServiceCollectionExtensionsTests
 {
+    [Fact]
+    public void AddAsyncomniaMessaging_WithConfiguration_InvokesItAfterRegisteringCoreServices()
+    {
+        var services = new ServiceCollection();
+        AsyncomniaMessagingBuilder? configuredBuilder = null;
+        var invocationCount = 0;
+
+        var returnedBuilder = services.AddAsyncomniaMessaging(builder =>
+        {
+            invocationCount++;
+            configuredBuilder = builder;
+
+            Assert.Contains(
+                services,
+                descriptor => descriptor.ServiceType == typeof(MessageJsonSerializer));
+            Assert.Contains(
+                services,
+                descriptor => descriptor.ServiceType == typeof(IMessageHandlerDispatcher));
+        });
+
+        Assert.Equal(1, invocationCount);
+        Assert.NotNull(configuredBuilder);
+        Assert.Same(returnedBuilder, configuredBuilder);
+        Assert.Same(services, configuredBuilder.Services);
+    }
+
     [Fact]
     public void AddAsyncomniaMessaging_RegistersMessageHandlerDispatcherAsScoped()
     {

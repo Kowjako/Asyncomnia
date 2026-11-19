@@ -71,7 +71,7 @@ public sealed class DelayedPublishingOptionsTests
         }
         else
         {
-            builder.UseDelayedPublishing(delayed => delayed.Configure(configure));
+            builder.UseDelayedPublishing(configure);
         }
 
         return services.BuildServiceProvider();

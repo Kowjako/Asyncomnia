@@ -214,6 +214,64 @@ public sealed class OutboxOptionsTests
         Assert.False(options.CleanupEnabled);
     }
 
+    [Fact]
+    public void ConfigureRetryPolicy_SetsConfiguration()
+    {
+        var options = new OutboxOptions();
+
+        options.ConfigureRetryPolicy(
+            17,
+            TimeSpan.FromSeconds(23));
+
+        Assert.Equal(17, options.MaxAttempts);
+        Assert.Equal(TimeSpan.FromSeconds(23), options.RetryDelay);
+    }
+
+    [Fact]
+    public void ConfigureCleanup_EnablesCleanupAndSetsConfiguration()
+    {
+        var options = new OutboxOptions
+        {
+            CleanupEnabled = false
+        };
+
+        options.ConfigureCleanup(
+            TimeSpan.FromDays(2),
+            TimeSpan.FromDays(11),
+            TimeSpan.FromMinutes(7),
+            456);
+
+        Assert.True(options.CleanupEnabled);
+        Assert.Equal(TimeSpan.FromDays(2), options.ProcessedMessageRetention);
+        Assert.Equal(TimeSpan.FromDays(11), options.FailedMessageRetention);
+        Assert.Equal(TimeSpan.FromMinutes(7), options.CleanupInterval);
+        Assert.Equal(456, options.CleanupBatchSize);
+    }
+
+    [Fact]
+    public void ConfigureCleanup_WithNullFailedRetention_PreservesNull()
+    {
+        var options = new OutboxOptions();
+
+        options.ConfigureCleanup(
+            TimeSpan.FromDays(2),
+            null,
+            TimeSpan.FromMinutes(7),
+            456);
+
+        Assert.Null(options.FailedMessageRetention);
+    }
+
+    [Fact]
+    public void DisableCleanup_DisablesCleanup()
+    {
+        var options = new OutboxOptions();
+
+        options.DisableCleanup();
+
+        Assert.False(options.CleanupEnabled);
+    }
+
     private static ServiceProvider CreateProvider(
         Action<OutboxOptions>? configure = null,
         bool registerOutboxStore = true,
@@ -239,7 +297,7 @@ public sealed class OutboxOptionsTests
         }
         else
         {
-            builder.UseOutbox(outbox => outbox.Configure(configure));
+            builder.UseOutbox(configure);
         }
 
         return services.BuildServiceProvider();

@@ -13,18 +13,24 @@ namespace Asyncomnia.Messaging.Reliability.Tests.DependencyInjection;
 public sealed class InboxBuilderExtensionsTests
 {
     [Fact]
-    public void UseInbox_ReturnsSameMessagingBuilderAndInvokesConfiguration()
+    public void UseInbox_ReturnsSameMessagingBuilderAndAppliesConfiguration()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        InboxBuilder? configuredBuilder = null;
+        InboxOptions? configuredOptions = null;
 
-        var returnedBuilder = builder.UseInbox(inbox =>
-            configuredBuilder = inbox);
+        var returnedBuilder = builder.UseInbox(options =>
+        {
+            configuredOptions = options;
+            options.DuplicateDetectionWindow = TimeSpan.FromHours(3);
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<InboxOptions>>().Value;
 
         Assert.Same(builder, returnedBuilder);
-        Assert.NotNull(configuredBuilder);
-        Assert.Same(services, configuredBuilder.Services);
+        Assert.Same(options, configuredOptions);
+        Assert.Equal(TimeSpan.FromHours(3), options.DuplicateDetectionWindow);
     }
 
     [Fact]

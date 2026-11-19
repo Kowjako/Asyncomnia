@@ -5,6 +5,7 @@ using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing;
 using Asyncomnia.Messaging.Reliability.Outbox.Processing.Retention;
+using Asyncomnia.Messaging.Reliability.Outbox.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -14,6 +15,29 @@ namespace Asyncomnia.Messaging.Reliability.Tests.DependencyInjection;
 
 public sealed class OutboxBuilderExtensionsTests
 {
+    [Fact]
+    public void UseOutbox_ReturnsSameMessagingBuilderAndAppliesConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IOutboxStore>());
+        services.AddSingleton(Mock.Of<IOutboxCleanupStore>());
+        var builder = services.AddAsyncomniaMessaging();
+        OutboxOptions? configuredOptions = null;
+
+        var returnedBuilder = builder.UseOutbox(options =>
+        {
+            configuredOptions = options;
+            options.WorkerCount = 7;
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
+
+        Assert.Same(builder, returnedBuilder);
+        Assert.Same(options, configuredOptions);
+        Assert.Equal(7, options.WorkerCount);
+    }
+
     [Fact]
     public void UseOutbox_ReplacesExistingPipelineWithScopedOutboxPipeline()
     {

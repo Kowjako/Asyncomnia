@@ -12,7 +12,7 @@ namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class InboxBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseInbox(this AsyncomniaMessagingBuilder builder, Action<InboxBuilder>? configure = null)
+    public static AsyncomniaMessagingBuilder UseInbox(this AsyncomniaMessagingBuilder builder, Action<InboxOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -24,13 +24,18 @@ public static class InboxBuilderExtensions
         builder.Services.AddScoped<IInboundMessagePipeline, InboxMessagePipeline>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<InboxOptions>, InboxOptionsValidator>());
-        builder.Services.AddOptions<InboxOptions>().ValidateOnStart();
+
+        var optionsBuilder = builder.Services.AddOptions<InboxOptions>();
+
+        if (configure is not null)
+        {
+            optionsBuilder.Configure(configure);
+        }
+
+        optionsBuilder.ValidateOnStart();
 
         builder.Services.TryAddScoped<InboxCleanupProcessor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, InboxCleanupBackgroundJob>());
-
-        var inboxBuilder = new InboxBuilder(builder.Services);
-        configure?.Invoke(inboxBuilder);
 
         return builder;
     }

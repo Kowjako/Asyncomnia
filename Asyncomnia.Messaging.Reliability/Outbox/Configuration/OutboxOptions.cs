@@ -32,4 +32,24 @@ public sealed class OutboxOptions
     public int CleanupBatchSize { get; set; } = 1000;
 
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    public void ConfigureRetryPolicy(int maxAttempts, TimeSpan delay)
+    {
+        MaxAttempts = maxAttempts;
+        RetryDelay = delay;
+    }
+
+    public void ConfigureCleanup(TimeSpan processedRetention, TimeSpan? failedRetention, TimeSpan interval, int batchSize)
+    {
+        CleanupEnabled = true;
+        ProcessedMessageRetention = processedRetention;
+        FailedMessageRetention = failedRetention;
+        CleanupInterval = interval;
+        CleanupBatchSize = batchSize;
+    }
+
+    public void DisableCleanup()
+    {
+        CleanupEnabled = false;
+    }
 }

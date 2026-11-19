@@ -11,7 +11,7 @@ namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class DelayedPublishingBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseDelayedPublishing(this AsyncomniaMessagingBuilder builder, Action<DelayedPublishingBuilder>? configure = null)
+    public static AsyncomniaMessagingBuilder UseDelayedPublishing(this AsyncomniaMessagingBuilder builder, Action<DelayedPublishingOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -21,11 +21,17 @@ public static class DelayedPublishingBuilderExtensions
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DelayedMessageBackgroundJob>());
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DelayedPublishingOptions>, DelayedPublishingOptionsValidator>());
-        builder.Services.AddOptions<DelayedPublishingOptions>().ValidateOnStart();
-        builder.Services.AddOutboxProcessing();
 
-        var delayedPublishingBuilder = new DelayedPublishingBuilder(builder.Services);
-        configure?.Invoke(delayedPublishingBuilder);
+        var optionsBuilder = builder.Services.AddOptions<DelayedPublishingOptions>();
+
+        if (configure is not null)
+        {
+            optionsBuilder.Configure(configure);
+        }
+
+        optionsBuilder.ValidateOnStart();
+
+        builder.Services.AddOutboxProcessing();
 
         return builder;
     }

@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.Outbound;
 using Asyncomnia.Messaging.Reliability.Outbox;
+using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -8,7 +9,7 @@ namespace Asyncomnia.Messaging.Reliability.DependencyInjection;
 
 public static class OutboxBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder, Action<OutboxBuilder>? configure = null)
+    public static AsyncomniaMessagingBuilder UseOutbox(this AsyncomniaMessagingBuilder builder, Action<OutboxOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -18,8 +19,13 @@ public static class OutboxBuilderExtensions
         builder.Services.AddScoped<IOutboundMessagePipeline, OutboxMessagePipeline>();
         builder.Services.AddOutboxProcessing();
 
-        var outboxBuilder = new OutboxBuilder(builder.Services);
-        configure?.Invoke(outboxBuilder);
+        var optionsBuilder = builder.Services
+            .AddOptions<OutboxOptions>();
+
+        if (configure is not null)
+        {
+            optionsBuilder.Configure(configure);
+        }
 
         return builder;
     }

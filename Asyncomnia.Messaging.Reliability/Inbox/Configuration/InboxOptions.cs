@@ -9,4 +9,16 @@ public sealed class InboxOptions
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     public bool CleanupEnabled { get; set; } = true;
+
+    public void ConfigureCleanup(TimeSpan interval, int batchSize)
+    {
+        CleanupEnabled = true;
+        CleanupInterval = interval;
+        CleanupBatchSize = batchSize;
+    }
+
+    public void DisableCleanup()
+    {
+        CleanupEnabled = false;
+    }
 }

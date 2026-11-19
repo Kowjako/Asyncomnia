@@ -13,7 +13,7 @@ namespace Asyncomnia.Messaging.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static AsyncomniaMessagingBuilder AddAsyncomniaMessaging(this IServiceCollection services)
+    public static AsyncomniaMessagingBuilder AddAsyncomniaMessaging(this IServiceCollection services, Action<AsyncomniaMessagingBuilder>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services, nameof(services));
 
@@ -40,6 +40,10 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<MessageJsonSerializer>();
 
-        return new AsyncomniaMessagingBuilder(services);
+        var builder = new AsyncomniaMessagingBuilder(services);
+
+        configure?.Invoke(builder);
+
+        return builder;
     }
 }

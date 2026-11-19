@@ -15,18 +15,26 @@ namespace Asyncomnia.Messaging.Reliability.Tests.DependencyInjection;
 public sealed class DelayedPublishingBuilderExtensionsTests
 {
     [Fact]
-    public void UseDelayedPublishing_ReturnsSameMessagingBuilderAndInvokesConfiguration()
+    public void UseDelayedPublishing_ReturnsSameMessagingBuilderAndAppliesConfiguration()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        DelayedPublishingBuilder? configuredBuilder = null;
+        DelayedPublishingOptions? configuredOptions = null;
 
-        var returnedBuilder = builder.UseDelayedPublishing(delayed =>
-            configuredBuilder = delayed);
+        var returnedBuilder = builder.UseDelayedPublishing(options =>
+        {
+            configuredOptions = options;
+            options.BatchSize = 27;
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider
+            .GetRequiredService<IOptions<DelayedPublishingOptions>>()
+            .Value;
 
         Assert.Same(builder, returnedBuilder);
-        Assert.NotNull(configuredBuilder);
-        Assert.Same(services, configuredBuilder.Services);
+        Assert.Same(options, configuredOptions);
+        Assert.Equal(27, options.BatchSize);
     }
 
     [Fact]

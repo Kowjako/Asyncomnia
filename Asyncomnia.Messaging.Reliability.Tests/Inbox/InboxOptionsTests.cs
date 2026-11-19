@@ -73,6 +73,33 @@ public sealed class InboxOptionsTests
             exception.Failures);
     }
 
+    [Fact]
+    public void ConfigureCleanup_EnablesCleanupAndSetsConfiguration()
+    {
+        var options = new InboxOptions
+        {
+            CleanupEnabled = false
+        };
+
+        options.ConfigureCleanup(
+            TimeSpan.FromMinutes(4),
+            321);
+
+        Assert.True(options.CleanupEnabled);
+        Assert.Equal(TimeSpan.FromMinutes(4), options.CleanupInterval);
+        Assert.Equal(321, options.CleanupBatchSize);
+    }
+
+    [Fact]
+    public void DisableCleanup_DisablesCleanup()
+    {
+        var options = new InboxOptions();
+
+        options.DisableCleanup();
+
+        Assert.False(options.CleanupEnabled);
+    }
+
     private static ServiceProvider CreateProvider(Action<InboxOptions>? configure = null)
     {
         var services = new ServiceCollection();
@@ -84,7 +111,7 @@ public sealed class InboxOptionsTests
         }
         else
         {
-            builder.UseInbox(inbox => inbox.Configure(configure));
+            builder.UseInbox(configure);
         }
 
         return services.BuildServiceProvider();
