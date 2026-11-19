@@ -255,7 +255,7 @@ public sealed class RabbitMqConsumerIntegrationTests
     {
         var endpointName = CreateEndpointName();
         var probe = new ConcurrentCommandProbe();
-        Action<RabbitMqConsumerOptions> configureConsumer = options =>
+        Action<RabbitMqConsumerBuilder> configureConsumer = options =>
             options.ConfigureSubscription(
                 "commands/long-work-job",
                 subscription =>
@@ -336,7 +336,7 @@ public sealed class RabbitMqConsumerIntegrationTests
         var endpointName = CreateEndpointName();
         var firstProbe = new MessageProbe<StartLongWorkJobCommand>();
         var secondProbe = new MessageProbe<StartLongWorkJobCommand>();
-        Action<RabbitMqConsumerOptions> configureConsumer = options =>
+        Action<RabbitMqConsumerBuilder> configureConsumer = options =>
             options.ConfigureSubscription(
                 "commands/long-work-job",
                 subscription =>
@@ -524,12 +524,9 @@ public sealed class RabbitMqConsumerIntegrationTests
                     BrokerRetryClientCreatedEventHandler>(),
             options =>
             {
-                options.BrokerRetriesEnabled = true;
-                options.BrokerRetryDelays =
-                [
+                options.UseBrokerRetries(
                     TimeSpan.FromMilliseconds(100),
-                    TimeSpan.FromMilliseconds(100)
-                ];
+                    TimeSpan.FromMilliseconds(100));
             });
         using var cancellationTokenSource =
             new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -592,11 +589,8 @@ public sealed class RabbitMqConsumerIntegrationTests
                 .UseInMemoryRetries(options => options.Immediately(2)),
             options =>
             {
-                options.BrokerRetriesEnabled = true;
-                options.BrokerRetryDelays =
-                [
-                    TimeSpan.FromMilliseconds(100)
-                ];
+                options.UseBrokerRetries(
+                    TimeSpan.FromMilliseconds(100));
             });
         using var cancellationTokenSource =
             new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -630,21 +624,25 @@ public sealed class RabbitMqConsumerIntegrationTests
         }
     }
 
-    private IHost CreateHost(string endpointName, Action<IServiceCollection> configureServices, Action<AsyncomniaMessagingBuilder> configureMessaging,
-        Action<RabbitMqConsumerOptions>? configureConsumer = null)
+    private IHost CreateHost(
+        string endpointName,
+        Action<IServiceCollection> configureServices,
+        Action<AsyncomniaMessagingBuilder> configureMessaging,
+        Action<RabbitMqConsumerBuilder>? configureConsumer = null)
     {
         var builder = Host.CreateApplicationBuilder();
         configureServices(builder.Services);
 
         var messaging = builder.Services.AddAsyncomniaMessaging();
         configureMessaging(messaging);
-        messaging
-            .UseRabbitMq(options => options.ConnectionString = _connectionString)
-            .UseRabbitMqConsumer(options =>
+        messaging.UseRabbitMq(rabbitMq =>
+        {
+            rabbitMq.ConnectionString = _connectionString;
+            rabbitMq.ConfigureConsumer(endpointName, consumer =>
             {
-                options.EndpointName = endpointName;
-                configureConsumer?.Invoke(options);
+                configureConsumer?.Invoke(consumer);
             });
+        });
 
         return builder.Build();
     }

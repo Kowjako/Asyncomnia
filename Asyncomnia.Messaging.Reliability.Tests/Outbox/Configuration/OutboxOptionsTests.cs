@@ -39,13 +39,15 @@ public sealed class OutboxOptionsTests
             options.BatchSize = 20;
             options.PollingInterval = TimeSpan.FromMilliseconds(500);
             options.LeaseDuration = TimeSpan.FromMinutes(2);
-            options.RetryDelay = TimeSpan.FromSeconds(9);
-            options.MaxAttempts = 5;
-            options.CleanupEnabled = false;
-            options.ProcessedMessageRetention = TimeSpan.FromDays(3);
-            options.FailedMessageRetention = TimeSpan.FromDays(30);
-            options.CleanupBatchSize = 250;
-            options.CleanupInterval = TimeSpan.FromMinutes(5);
+            options.ConfigureRetryPolicy(
+                5,
+                TimeSpan.FromSeconds(9));
+            options.ConfigureCleanup(
+                TimeSpan.FromDays(3),
+                TimeSpan.FromDays(30),
+                TimeSpan.FromMinutes(5),
+                250);
+            options.DisableCleanup();
         });
 
         var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
@@ -106,7 +108,8 @@ public sealed class OutboxOptionsTests
     [Fact]
     public void UseOutbox_WhenMaxAttemptsIsNotPositive_ThrowsValidationException()
     {
-        var exception = GetValidationException(options => options.MaxAttempts = 0);
+        var exception = GetValidationException(options =>
+            options.ConfigureRetryPolicy(0, options.RetryDelay));
 
         Assert.Contains(
             "OutboxOptions:MaxAttempts must be greater than zero",
@@ -116,7 +119,8 @@ public sealed class OutboxOptionsTests
     [Fact]
     public void UseOutbox_WhenRetryDelayIsNotPositive_ThrowsValidationException()
     {
-        var exception = GetValidationException(options => options.RetryDelay = TimeSpan.Zero);
+        var exception = GetValidationException(options =>
+            options.ConfigureRetryPolicy(options.MaxAttempts, TimeSpan.Zero));
 
         Assert.Contains(
             "OutboxOptions:RetryDelay must be greater than zero",
@@ -127,7 +131,11 @@ public sealed class OutboxOptionsTests
     public void UseOutbox_WhenProcessedMessageRetentionIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.ProcessedMessageRetention = TimeSpan.Zero);
+            options.ConfigureCleanup(
+                TimeSpan.Zero,
+                options.FailedMessageRetention,
+                options.CleanupInterval,
+                options.CleanupBatchSize));
 
         Assert.Contains(
             "OutboxOptions:ProcessedMessageRetention must be greater than zero",
@@ -138,7 +146,11 @@ public sealed class OutboxOptionsTests
     public void UseOutbox_WhenFailedMessageRetentionIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.FailedMessageRetention = TimeSpan.Zero);
+            options.ConfigureCleanup(
+                options.ProcessedMessageRetention,
+                TimeSpan.Zero,
+                options.CleanupInterval,
+                options.CleanupBatchSize));
 
         Assert.Contains(
             "OutboxOptions:FailedMessageRetention must be greater than zero when configured",
@@ -149,7 +161,11 @@ public sealed class OutboxOptionsTests
     public void UseOutbox_WhenCleanupBatchSizeIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.CleanupBatchSize = 0);
+            options.ConfigureCleanup(
+                options.ProcessedMessageRetention,
+                options.FailedMessageRetention,
+                options.CleanupInterval,
+                0));
 
         Assert.Contains(
             "OutboxOptions:CleanupBatchSize must be greater than zero",
@@ -160,7 +176,11 @@ public sealed class OutboxOptionsTests
     public void UseOutbox_WhenCleanupIntervalIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.CleanupInterval = TimeSpan.Zero);
+            options.ConfigureCleanup(
+                options.ProcessedMessageRetention,
+                options.FailedMessageRetention,
+                TimeSpan.Zero,
+                options.CleanupBatchSize));
 
         Assert.Contains(
             "OutboxOptions:CleanupInterval must be greater than zero",
@@ -206,7 +226,7 @@ public sealed class OutboxOptionsTests
     public void UseOutbox_WithCleanupDisabled_DoesNotRequireCleanupStore()
     {
         using var provider = CreateProvider(
-            options => options.CleanupEnabled = false,
+            options => options.DisableCleanup(),
             registerCleanupStore: false);
 
         var options = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
@@ -230,10 +250,8 @@ public sealed class OutboxOptionsTests
     [Fact]
     public void ConfigureCleanup_EnablesCleanupAndSetsConfiguration()
     {
-        var options = new OutboxOptions
-        {
-            CleanupEnabled = false
-        };
+        var options = new OutboxOptions();
+        options.DisableCleanup();
 
         options.ConfigureCleanup(
             TimeSpan.FromDays(2),

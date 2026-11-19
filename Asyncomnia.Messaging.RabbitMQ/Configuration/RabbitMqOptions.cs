@@ -1,6 +1,6 @@
 ﻿namespace Asyncomnia.Messaging.RabbitMQ.Configuration;
 
-public sealed class RabbitMqOptions
+internal sealed class RabbitMqOptions
 {
     /// <summary>
     /// AMQP connection URI, for example: amqp://guest:guest@localhost:5672/

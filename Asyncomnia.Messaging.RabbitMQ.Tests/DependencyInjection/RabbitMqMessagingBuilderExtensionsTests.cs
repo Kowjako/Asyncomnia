@@ -1,3 +1,4 @@
+using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
@@ -196,31 +197,72 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMq_ConfiguresRabbitMqOptions()
+    public void UseRabbitMq_ConfiguresPublisherOptions()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
         builder.UseRabbitMq(options =>
         {
             options.ConnectionString = ConnectionString;
-            options.CaptureUnroutableEvents = false;
+            options.PublisherChannelCount = 9;
+            options.CaptureUnroutableEvents(123, 456);
         });
         using var provider = services.BuildServiceProvider();
 
         var options = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
 
         Assert.Equal(ConnectionString, options.ConnectionString);
+        Assert.Equal(9, options.PublisherChannelCount);
+        Assert.True(options.CaptureUnroutableEvents);
+        Assert.Equal(123, options.UnroutableQueueMaxLength);
+        Assert.Equal(456, options.UnroutableQueueMaxLengthBytes);
+    }
+
+    [Fact]
+    public void UseRabbitMq_CanDisableUnroutableEventCapture()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(options =>
+        {
+            options.ConnectionString = ConnectionString;
+            options.DisableUnroutableEventCapture();
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<RabbitMqOptions>>().Value;
+
         Assert.False(options.CaptureUnroutableEvents);
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersSubscriptionResolverAsSingleton()
+    public void UseRabbitMq_WithoutConsumer_DoesNotRegisterConsumerServices()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        builder.UseRabbitMq(options =>
+            options.ConnectionString = ConnectionString);
+
+        Assert.DoesNotContain(
+            services,
+            x => x.ServiceType == typeof(RabbitMqSubscriptionResolver));
+        Assert.DoesNotContain(
+            services,
+            x => x.ServiceType == typeof(IValidateOptions<RabbitMqConsumerOptions>));
+        Assert.DoesNotContain(
+            services,
+            x => x.ServiceType == typeof(IHostedService) &&
+                 x.ImplementationType == typeof(RabbitMqConsumerHostedService));
+    }
+
+    [Fact]
+    public void UseRabbitMq_WithConsumer_RegistersSubscriptionResolverAsSingleton()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -232,14 +274,22 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_ConfiguresConsumerOptions()
+    public void UseRabbitMq_WithConsumer_ConfiguresConsumerOptions()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
-        builder.UseRabbitMqConsumer(options =>
+        ConfigureConsumer(builder, options =>
         {
-            options.EndpointName = "billing-service";
-            options.DeadLetteringEnabled = false;
+            options.PrefetchCount = 13;
+            options.DispatcherConcurrency = 7;
+            options.SingleActiveConsumer = true;
+            options.DisableDeadLettering();
+            options.UseBrokerRetries(
+                TimeSpan.FromSeconds(3),
+                TimeSpan.FromSeconds(9));
+            options.ConfigureSubscription(
+                "events/orders",
+                subscription => subscription.PrefetchCount = 21);
         });
         using var provider = services.BuildServiceProvider();
 
@@ -248,17 +298,28 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
             .Value;
 
         Assert.Equal("billing-service", options.EndpointName);
+        Assert.Equal((ushort)13, options.DefaultPrefetchCount);
+        Assert.Equal((ushort)7, options.DefaultDispatcherConcurrency);
+        Assert.True(options.DefaultSingleActiveConsumer);
         Assert.False(options.DeadLetteringEnabled);
+        Assert.True(options.BrokerRetriesEnabled);
+        Assert.Equal(
+            [TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(9)],
+            options.BrokerRetryDelays);
+
+        var subscription = options.GetSubscriptionSettings("events/orders");
+        Assert.Equal((ushort)21, subscription.PrefetchCount);
+        Assert.Equal((ushort)7, subscription.DispatcherConcurrency);
+        Assert.True(subscription.SingleActiveConsumer);
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersDeadLetterPublisherAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersDeadLetterPublisherAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -270,13 +331,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersDeadLetterTopologyCreatorAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersDeadLetterTopologyCreatorAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -289,13 +349,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersRetryTopologyCreatorAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersRetryTopologyCreatorAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -307,13 +366,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersDelayedRetryPublisherAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersDelayedRetryPublisherAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -325,16 +383,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersConsumeErrorStrategyAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersConsumeErrorStrategyAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder
-            .UseRabbitMq(options =>
-                options.ConnectionString = ConnectionString)
-            .UseRabbitMqConsumer(options =>
-                options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -344,13 +398,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersTopologyCreatorAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersTopologyCreatorAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options =>
-            options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -362,12 +415,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersMessageConsumerAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersMessageConsumerAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -377,12 +430,12 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersQueueConsumerFactoryAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersQueueConsumerFactoryAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
@@ -392,17 +445,31 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseRabbitMqConsumer_RegistersHostedServiceAsSingleton()
+    public void UseRabbitMq_WithConsumer_RegistersHostedServiceAsSingleton()
     {
         var services = new ServiceCollection();
         var builder = services.AddAsyncomniaMessaging();
 
-        builder.UseRabbitMqConsumer(options => options.EndpointName = "billing-service");
+        ConfigureConsumer(builder);
 
         var registration = Assert.Single(
             services,
             x => x.ServiceType == typeof(IHostedService)
                  && x.ImplementationType == typeof(RabbitMqConsumerHostedService));
         Assert.Equal(ServiceLifetime.Singleton, registration.Lifetime);
+    }
+
+    private static void ConfigureConsumer(
+        AsyncomniaMessagingBuilder builder,
+        Action<RabbitMqConsumerBuilder>? configure = null)
+    {
+        builder.UseRabbitMq(rabbitMq =>
+        {
+            rabbitMq.ConnectionString = ConnectionString;
+            rabbitMq.ConfigureConsumer("billing-service", consumer =>
+            {
+                configure?.Invoke(consumer);
+            });
+        });
     }
 }

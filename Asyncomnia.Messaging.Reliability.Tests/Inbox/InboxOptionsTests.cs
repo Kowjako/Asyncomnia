@@ -27,9 +27,10 @@ public sealed class InboxOptionsTests
         using var provider = CreateProvider(options =>
         {
             options.DuplicateDetectionWindow = TimeSpan.FromHours(2);
-            options.CleanupBatchSize = 250;
-            options.CleanupInterval = TimeSpan.FromMinutes(1);
-            options.CleanupEnabled = false;
+            options.ConfigureCleanup(
+                TimeSpan.FromMinutes(1),
+                250);
+            options.DisableCleanup();
         });
 
         var options = provider.GetRequiredService<IOptions<InboxOptions>>().Value;
@@ -55,7 +56,7 @@ public sealed class InboxOptionsTests
     public void UseInbox_WhenCleanupBatchSizeIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.CleanupBatchSize = 0);
+            options.ConfigureCleanup(options.CleanupInterval, 0));
 
         Assert.Contains(
             "InboxOptions:CleanupBatchSize must be greater than zero",
@@ -66,7 +67,7 @@ public sealed class InboxOptionsTests
     public void UseInbox_WhenCleanupIntervalIsNotPositive_ThrowsValidationException()
     {
         var exception = GetValidationException(options =>
-            options.CleanupInterval = TimeSpan.Zero);
+            options.ConfigureCleanup(TimeSpan.Zero, options.CleanupBatchSize));
 
         Assert.Contains(
             "InboxOptions:CleanupInterval must be greater than zero",
@@ -76,10 +77,8 @@ public sealed class InboxOptionsTests
     [Fact]
     public void ConfigureCleanup_EnablesCleanupAndSetsConfiguration()
     {
-        var options = new InboxOptions
-        {
-            CleanupEnabled = false
-        };
+        var options = new InboxOptions();
+        options.DisableCleanup();
 
         options.ConfigureCleanup(
             TimeSpan.FromMinutes(4),

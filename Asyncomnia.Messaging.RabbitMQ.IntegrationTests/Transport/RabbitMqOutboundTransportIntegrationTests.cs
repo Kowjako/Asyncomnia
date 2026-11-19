@@ -193,7 +193,11 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
             .UseRabbitMq(options =>
             {
                 options.ConnectionString = _connectionString;
-                options.CaptureUnroutableEvents = captureUnroutableEvents;
+
+                if (!captureUnroutableEvents)
+                {
+                    options.DisableUnroutableEventCapture();
+                }
             });
 
         return services.BuildServiceProvider();

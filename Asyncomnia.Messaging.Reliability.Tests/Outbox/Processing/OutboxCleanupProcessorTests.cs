@@ -11,12 +11,12 @@ public sealed class OutboxCleanupProcessorTests
     [Fact]
     public async Task ProcessBatchAsync_UsesConfiguredRetentionAndBatchSize()
     {
-        var options = new OutboxOptions
-        {
-            ProcessedMessageRetention = TimeSpan.FromDays(4),
-            FailedMessageRetention = TimeSpan.FromDays(21),
-            CleanupBatchSize = 73
-        };
+        var options = new OutboxOptions();
+        options.ConfigureCleanup(
+            TimeSpan.FromDays(4),
+            TimeSpan.FromDays(21),
+            options.CleanupInterval,
+            73);
         using var cancellation = new CancellationTokenSource();
         var store = new Mock<IOutboxCleanupStore>(MockBehavior.Strict);
         store
@@ -39,10 +39,7 @@ public sealed class OutboxCleanupProcessorTests
     [Fact]
     public async Task ProcessBatchAsync_WhenFailedRetentionIsNotConfigured_PassesNullToStore()
     {
-        var options = new OutboxOptions
-        {
-            FailedMessageRetention = null
-        };
+        var options = new OutboxOptions();
         var store = new Mock<IOutboxCleanupStore>(MockBehavior.Strict);
         store
             .Setup(x => x.DeleteExpiredAsync(

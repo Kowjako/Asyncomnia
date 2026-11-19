@@ -15,23 +15,23 @@ public sealed class OutboxOptions
 
     public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(1);
 
-    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan RetryDelay { get; private set; } = TimeSpan.FromSeconds(5);
 
-    public int MaxAttempts { get; set; } = 10;
+    public int MaxAttempts { get; private set; } = 10;
 
-    public bool CleanupEnabled { get; set; } = true;
+    public bool CleanupEnabled { get; private set; } = true;
 
-    public TimeSpan ProcessedMessageRetention { get; set; } = TimeSpan.FromDays(7);
+    public TimeSpan ProcessedMessageRetention { get; private set; } = TimeSpan.FromDays(7);
 
     /// <summary>
     /// Retention period for permanently failed messages.
     /// Null means that failed messages are never automatically removed.
     /// </summary>
-    public TimeSpan? FailedMessageRetention { get; set; }
+    public TimeSpan? FailedMessageRetention { get; private set; }
 
-    public int CleanupBatchSize { get; set; } = 1000;
+    public int CleanupBatchSize { get; private set; } = 1000;
 
-    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(1);
+    public TimeSpan CleanupInterval { get; private set; } = TimeSpan.FromMinutes(1);
 
     public void ConfigureRetryPolicy(int maxAttempts, TimeSpan delay)
     {

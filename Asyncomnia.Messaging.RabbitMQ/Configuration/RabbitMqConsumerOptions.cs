@@ -1,6 +1,6 @@
 ﻿namespace Asyncomnia.Messaging.RabbitMQ.Configuration;
 
-public sealed class RabbitMqConsumerOptions
+internal sealed class RabbitMqConsumerOptions
 {
     private readonly Dictionary<string, RabbitMqSubscriptionOptions> _subscriptions = new(StringComparer.Ordinal);
 

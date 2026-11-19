@@ -86,7 +86,10 @@ public sealed class OutboxBatchProcessorTests
     [Fact]
     public async Task ProcessBatchAsync_WhenDispatchFailsBeforeFinalAttempt_SchedulesRetry()
     {
-        var options = new OutboxOptions { RetryDelay = TimeSpan.FromSeconds(7) };
+        var options = new OutboxOptions();
+        options.ConfigureRetryPolicy(
+            options.MaxAttempts,
+            TimeSpan.FromSeconds(7));
         var claimedMessage = CreateClaimedMessage(attemptNumber: 2);
         var store = CreateStoreReturning(options, claimedMessage);
         var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
@@ -119,7 +122,8 @@ public sealed class OutboxBatchProcessorTests
     [Fact]
     public async Task ProcessBatchAsync_WhenDispatchFailsOnFinalAttempt_MarksMessageAsFailed()
     {
-        var options = new OutboxOptions { MaxAttempts = 3 };
+        var options = new OutboxOptions();
+        options.ConfigureRetryPolicy(3, options.RetryDelay);
         var claimedMessage = CreateClaimedMessage(attemptNumber: options.MaxAttempts);
         var store = CreateStoreReturning(options, claimedMessage);
         var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);
@@ -149,7 +153,8 @@ public sealed class OutboxBatchProcessorTests
     [Fact]
     public async Task ProcessBatchAsync_WhenAttemptExceedsMaximum_FailsWithoutDispatching()
     {
-        var options = new OutboxOptions { MaxAttempts = 3 };
+        var options = new OutboxOptions();
+        options.ConfigureRetryPolicy(3, options.RetryDelay);
         var claimedMessage = CreateClaimedMessage(attemptNumber: options.MaxAttempts + 1);
         var store = CreateStoreReturning(options, claimedMessage);
         var transport = new Mock<IOutboundTransport>(MockBehavior.Strict);

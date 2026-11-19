@@ -15,9 +15,9 @@ public sealed class InboxCleanupProcessorTests
         var utcNow = new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero);
         var options = new InboxOptions
         {
-            DuplicateDetectionWindow = TimeSpan.FromHours(2),
-            CleanupBatchSize = 37
+            DuplicateDetectionWindow = TimeSpan.FromHours(2)
         };
+        options.ConfigureCleanup(options.CleanupInterval, 37);
         using var cancellation = new CancellationTokenSource();
         var store = new Mock<IInboxCleanupStore>(MockBehavior.Strict);
         store

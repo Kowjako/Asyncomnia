@@ -4,11 +4,11 @@ public sealed class InboxOptions
 {
     public TimeSpan DuplicateDetectionWindow { get; set; } = TimeSpan.FromMinutes(30);
 
-    public int CleanupBatchSize { get; set; } = 100;
+    public bool CleanupEnabled { get; private set; } = true;
 
-    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromSeconds(10);
+    public int CleanupBatchSize { get; private set; } = 100;
 
-    public bool CleanupEnabled { get; set; } = true;
+    public TimeSpan CleanupInterval { get; private set; } = TimeSpan.FromSeconds(10);
 
     public void ConfigureCleanup(TimeSpan interval, int batchSize)
     {

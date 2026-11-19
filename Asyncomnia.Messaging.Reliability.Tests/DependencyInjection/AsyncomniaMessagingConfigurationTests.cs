@@ -1,5 +1,6 @@
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.DelayedPublishing.Configuration;
+using Asyncomnia.Messaging.Reliability.DependencyInjection;
 using Asyncomnia.Messaging.Reliability.Inbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Configuration;
 using Asyncomnia.Messaging.Reliability.Outbox.Storage;

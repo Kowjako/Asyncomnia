@@ -13,7 +13,8 @@ public sealed class OutboxCleanupBackgroundJobTests
     [Fact]
     public async Task StartAsync_WhenCleanupIsDisabled_DoesNotResolveProcessor()
     {
-        var options = new OutboxOptions { CleanupEnabled = false };
+        var options = new OutboxOptions();
+        options.DisableCleanup();
         await using var provider = new ServiceCollection().BuildServiceProvider();
         using var job = CreateJob(provider, options, TimeProvider.System, out var logger);
 
@@ -29,7 +30,12 @@ public sealed class OutboxCleanupBackgroundJobTests
     [Fact]
     public async Task RunAsync_WhenFullBatchIsDeleted_ImmediatelyProcessesNextBatch()
     {
-        var options = new OutboxOptions { CleanupBatchSize = 10 };
+        var options = new OutboxOptions();
+        options.ConfigureCleanup(
+            options.ProcessedMessageRetention,
+            options.FailedMessageRetention,
+            options.CleanupInterval,
+            10);
         var secondBatchEntered = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var blocker = new TaskCompletionSource<bool>(
@@ -64,7 +70,12 @@ public sealed class OutboxCleanupBackgroundJobTests
     [Fact]
     public async Task RunAsync_WhenPartialBatchIsDeleted_WaitsBeforeNextBatch()
     {
-        var options = new OutboxOptions { CleanupBatchSize = 10 };
+        var options = new OutboxOptions();
+        options.ConfigureCleanup(
+            options.ProcessedMessageRetention,
+            options.FailedMessageRetention,
+            options.CleanupInterval,
+            10);
         var firstBatchProcessed = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondBatchProcessed = new TaskCompletionSource<bool>(

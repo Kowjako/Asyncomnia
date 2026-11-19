@@ -13,7 +13,8 @@ public sealed class InboxCleanupBackgroundJobTests
     [Fact]
     public async Task StartAsync_WhenCleanupIsDisabled_DoesNotResolveProcessor()
     {
-        var options = new InboxOptions { CleanupEnabled = false };
+        var options = new InboxOptions();
+        options.DisableCleanup();
         await using var provider = new ServiceCollection().BuildServiceProvider();
         using var job = CreateJob(provider, options, TimeProvider.System, out var logger);
 
@@ -29,7 +30,8 @@ public sealed class InboxCleanupBackgroundJobTests
     [Fact]
     public async Task RunAsync_WhenFullBatchIsDeleted_ImmediatelyProcessesNextBatch()
     {
-        var options = new InboxOptions { CleanupBatchSize = 10 };
+        var options = new InboxOptions();
+        options.ConfigureCleanup(options.CleanupInterval, 10);
         var secondBatchEntered = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var blocker = new TaskCompletionSource<bool>(
@@ -65,7 +67,8 @@ public sealed class InboxCleanupBackgroundJobTests
     [Fact]
     public async Task RunAsync_WhenPartialBatchIsDeleted_WaitsBeforeNextBatch()
     {
-        var options = new InboxOptions { CleanupBatchSize = 10 };
+        var options = new InboxOptions();
+        options.ConfigureCleanup(options.CleanupInterval, 10);
         var firstBatchProcessed = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondBatchProcessed = new TaskCompletionSource<bool>(

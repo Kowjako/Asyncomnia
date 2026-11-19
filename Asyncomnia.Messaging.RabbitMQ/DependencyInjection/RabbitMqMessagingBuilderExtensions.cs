@@ -19,54 +19,62 @@ namespace Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 
 public static class RabbitMqMessagingBuilderExtensions
 {
-    public static AsyncomniaMessagingBuilder UseRabbitMq(this AsyncomniaMessagingBuilder builder, Action<RabbitMqOptions> configure)
+    public static AsyncomniaMessagingBuilder UseRabbitMq(this AsyncomniaMessagingBuilder builder, Action<RabbitMqBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
 
-        builder.Services.TryAddSingleton<IRabbitMqConnectionProvider, RabbitMqConnectionProvider>();
-        builder.Services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
-        builder.Services.TryAddSingleton<IRabbitMqChannelPool, RabbitMqChannelPool>();
-        builder.Services.TryAddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
+        var rabbitMq = new RabbitMqBuilder();
 
-        builder.Services.TryAddSingleton<IRabbitMqUnroutableTopologyCreator, RabbitMqUnroutableTopologyCreator>();
-        builder.Services.TryAddSingleton<IRabbitMqExchangeCreator, RabbitMqExchangeCreator>();
+        configure(rabbitMq);
 
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqOptions>, RabbitMqOptionsValidator>());
-        builder.Services.AddOptions<RabbitMqOptions>().Configure(configure).ValidateOnStart();
+        AddPublisher(builder.Services, rabbitMq);
 
-        builder.Services.TryAddSingleton<MessageRouteResolver>();
-        builder.Services.TryAddSingleton<IOutboundTransport, RabbitMqOutboundTransport>();
+        if (rabbitMq.ConsumerConfigured)
+        {
+            AddConsumer(builder.Services, rabbitMq);
+        }
 
         return builder;
     }
 
-    public static AsyncomniaMessagingBuilder UseRabbitMqConsumer(this AsyncomniaMessagingBuilder builder, Action<RabbitMqConsumerOptions> configure)
+    private static void AddPublisher(IServiceCollection services, RabbitMqBuilder configuration)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(configure);
+        services.TryAddSingleton<IRabbitMqConnectionProvider, RabbitMqConnectionProvider>();
+        services.TryAddSingleton<IRabbitMqChannelFactory, RabbitMqChannelFactory>();
+        services.TryAddSingleton<IRabbitMqChannelPool, RabbitMqChannelPool>();
+        services.TryAddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
+        services.TryAddSingleton<IRabbitMqUnroutableTopologyCreator, RabbitMqUnroutableTopologyCreator>();
+        services.TryAddSingleton<IRabbitMqExchangeCreator, RabbitMqExchangeCreator>();
 
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqConsumerOptions>, RabbitMqConsumerOptionsValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqOptions>, RabbitMqOptionsValidator>());
 
-        builder.Services.AddOptions<RabbitMqConsumerOptions>().Configure(configure).ValidateOnStart();
+        services.AddOptions<RabbitMqOptions>().Configure(configuration.ApplyTo).ValidateOnStart();
 
-        builder.Services.TryAddSingleton<RabbitMqSubscriptionResolver>();
-        builder.Services.TryAddSingleton<RabbitMqTopologyCreator>();
+        services.TryAddSingleton<MessageRouteResolver>();
+        services.TryAddSingleton<IOutboundTransport, RabbitMqOutboundTransport>();
+    }
 
-        builder.Services.TryAddSingleton<RabbitMqDeadLetterRouteResolver>();
-        builder.Services.TryAddSingleton<IRabbitMqDeadLetterPublisher, RabbitMqDeadLetterPublisher>();
-        builder.Services.TryAddSingleton<IRabbitMqDeadLetterTopologyCreator, RabbitMqDeadLetterTopologyCreator>();
+    private static void AddConsumer(IServiceCollection services, RabbitMqBuilder configuration)
+    {
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RabbitMqConsumerOptions>, RabbitMqConsumerOptionsValidator>());
 
-        builder.Services.TryAddSingleton<IRabbitMqRetryTopologyCreator, RabbitMqRetryTopologyCreator>();
-        builder.Services.TryAddSingleton<IRabbitMqDelayedRetryPublisher, RabbitMqDelayedRetryPublisher>();
+        services.AddOptions<RabbitMqConsumerOptions>().Configure(configuration.ApplyConsumerTo).ValidateOnStart();
 
-        builder.Services.TryAddSingleton<RabbitMqConsumeErrorStrategy>();
-        builder.Services.TryAddSingleton<RabbitMqMessageConsumer>();
+        services.TryAddSingleton<RabbitMqSubscriptionResolver>();
+        services.TryAddSingleton<RabbitMqTopologyCreator>();
 
-        builder.Services.TryAddSingleton<IRabbitMqQueueConsumerFactory, RabbitMqQueueConsumerFactory>();
+        services.TryAddSingleton<RabbitMqDeadLetterRouteResolver>();
+        services.TryAddSingleton<IRabbitMqDeadLetterPublisher, RabbitMqDeadLetterPublisher>();
+        services.TryAddSingleton<IRabbitMqDeadLetterTopologyCreator, RabbitMqDeadLetterTopologyCreator>();
 
-        builder.Services.AddHostedService<RabbitMqConsumerHostedService>();
+        services.TryAddSingleton<IRabbitMqRetryTopologyCreator, RabbitMqRetryTopologyCreator>();
+        services.TryAddSingleton<IRabbitMqDelayedRetryPublisher, RabbitMqDelayedRetryPublisher>();
 
-        return builder;
+        services.TryAddSingleton<RabbitMqConsumeErrorStrategy>();
+        services.TryAddSingleton<RabbitMqMessageConsumer>();
+
+        services.TryAddSingleton<IRabbitMqQueueConsumerFactory, RabbitMqQueueConsumerFactory>();
+        services.AddHostedService<RabbitMqConsumerHostedService>();
     }
 }
