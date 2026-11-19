@@ -33,10 +33,9 @@ public sealed class RabbitMqBuilder
         CaptureUnroutableEventsEnabled = false;
     }
 
-    public void ConfigureConsumer(string endpointName, Action<RabbitMqConsumerBuilder> configure)
+    public void ConfigureConsumer(string endpointName, Action<RabbitMqConsumerBuilder>? configure = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointName);
-        ArgumentNullException.ThrowIfNull(configure);
 
         if (_consumer is not null)
         {
@@ -45,7 +44,7 @@ public sealed class RabbitMqBuilder
 
         var consumer = new RabbitMqConsumerBuilder(endpointName);
 
-        configure(consumer);
+        configure?.Invoke(consumer);
 
         _consumer = consumer;
     }

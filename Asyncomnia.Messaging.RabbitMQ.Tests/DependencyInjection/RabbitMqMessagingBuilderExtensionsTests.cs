@@ -466,10 +466,14 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         builder.UseRabbitMq(rabbitMq =>
         {
             rabbitMq.ConnectionString = ConnectionString;
-            rabbitMq.ConfigureConsumer("billing-service", consumer =>
+
+            if (configure is null)
             {
-                configure?.Invoke(consumer);
-            });
+                rabbitMq.ConfigureConsumer("billing-service");
+                return;
+            }
+
+            rabbitMq.ConfigureConsumer("billing-service", configure);
         });
     }
 }

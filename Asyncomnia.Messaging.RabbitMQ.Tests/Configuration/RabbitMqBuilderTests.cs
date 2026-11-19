@@ -52,23 +52,39 @@ public sealed class RabbitMqBuilderTests
         var builder = new RabbitMqBuilder();
 
         Assert.ThrowsAny<ArgumentException>(() =>
-            builder.ConfigureConsumer(endpointName!, _ => { }));
+            builder.ConfigureConsumer(endpointName!));
     }
 
     [Fact]
-    public void ConfigureConsumer_WithNullConfiguration_Throws()
+    public void ConfigureConsumer_WithoutConfiguration_UsesDefaults()
     {
         var builder = new RabbitMqBuilder();
 
-        Assert.Throws<ArgumentNullException>(() =>
-            builder.ConfigureConsumer("billing-service", null!));
+        builder.ConfigureConsumer("billing-service");
+
+        var options = new RabbitMqConsumerOptions();
+        builder.ApplyConsumerTo(options);
+
+        Assert.Equal("billing-service", options.EndpointName);
+        Assert.Equal((ushort)1, options.DefaultPrefetchCount);
+        Assert.Equal((ushort)1, options.DefaultDispatcherConcurrency);
+        Assert.False(options.DefaultSingleActiveConsumer);
+        Assert.True(options.DeadLetteringEnabled);
+        Assert.False(options.BrokerRetriesEnabled);
+        Assert.Equal(
+            [
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromMinutes(1),
+                TimeSpan.FromMinutes(5)
+            ],
+            options.BrokerRetryDelays);
     }
 
     [Fact]
     public void ConfigureConsumer_WhenAlreadyConfigured_Throws()
     {
         var builder = new RabbitMqBuilder();
-        builder.ConfigureConsumer("billing-service", _ => { });
+        builder.ConfigureConsumer("billing-service");
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
             builder.ConfigureConsumer("other-service", _ => { }));
