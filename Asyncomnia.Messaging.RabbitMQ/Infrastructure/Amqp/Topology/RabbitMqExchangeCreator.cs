@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;

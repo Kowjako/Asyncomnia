@@ -530,7 +530,11 @@ public sealed class RabbitMqMessageConsumerTests
                     "client-created-event",
                     messageType ?? typeof(ClientCreatedEvent))
             ],
-            Settings = new RabbitMqSubscriptionSettings(false, 1, 1)
+            Settings = new RabbitMqSubscriptionSettings(
+                RabbitMqQueueType.Quorum,
+                false,
+                1,
+                1)
         };
     }
 

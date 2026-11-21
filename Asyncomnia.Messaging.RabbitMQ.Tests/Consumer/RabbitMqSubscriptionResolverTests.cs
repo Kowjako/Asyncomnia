@@ -127,6 +127,7 @@ public sealed class RabbitMqSubscriptionResolverTests
             eventTypes: [typeof(ClientCreatedEvent)],
             configureOptions: options =>
             {
+                options.DefaultQueueType = RabbitMqQueueType.Classic;
                 options.DefaultSingleActiveConsumer = true;
                 options.DefaultPrefetchCount = 3;
                 options.DefaultDispatcherConcurrency = 4;
@@ -134,6 +135,7 @@ public sealed class RabbitMqSubscriptionResolverTests
 
         var subscription = Assert.Single(resolver.Resolve());
 
+        Assert.Equal(RabbitMqQueueType.Classic, subscription.Settings.QueueType);
         Assert.True(subscription.Settings.SingleActiveConsumer);
         Assert.Equal((ushort)3, subscription.Settings.PrefetchCount);
         Assert.Equal((ushort)4, subscription.Settings.DispatcherConcurrency);
@@ -149,6 +151,7 @@ public sealed class RabbitMqSubscriptionResolverTests
                 "commands/long-work-job",
                 subscription =>
                 {
+                    subscription.QueueType = RabbitMqQueueType.Classic;
                     subscription.SingleActiveConsumer = true;
                     subscription.PrefetchCount = 1;
                     subscription.DispatcherConcurrency = 1;
@@ -157,11 +160,13 @@ public sealed class RabbitMqSubscriptionResolverTests
         var subscriptions = resolver.Resolve().ToDictionary(x => x.ExchangeName);
 
         var command = subscriptions["commands/long-work-job"];
+        Assert.Equal(RabbitMqQueueType.Classic, command.Settings.QueueType);
         Assert.True(command.Settings.SingleActiveConsumer);
         Assert.Equal((ushort)1, command.Settings.PrefetchCount);
         Assert.Equal((ushort)1, command.Settings.DispatcherConcurrency);
 
         var @event = subscriptions["events/clients"];
+        Assert.Equal(RabbitMqQueueType.Quorum, @event.Settings.QueueType);
         Assert.False(@event.Settings.SingleActiveConsumer);
         Assert.Equal((ushort)1, @event.Settings.PrefetchCount);
         Assert.Equal((ushort)1, @event.Settings.DispatcherConcurrency);

@@ -35,6 +35,7 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
         var channel = new Mock<IChannel>(MockBehavior.Strict);
         var options = new RabbitMqOptions
         {
+            DefaultQueueType = RabbitMqQueueType.Classic,
             UnroutableQueueMaxLength = 25,
             UnroutableQueueMaxLengthBytes = 4096
         };
@@ -304,8 +305,17 @@ public sealed class RabbitMqUnroutableTopologyCreatorTests
         IDictionary<string, object?>? arguments,
         RabbitMqOptions options)
     {
+        var expectedQueueType = options.DefaultQueueType ==
+                                RabbitMqQueueType.Quorum
+            ? "quorum"
+            : "classic";
+
         return arguments is not null &&
-               arguments.Count == 3 &&
+               arguments.Count == 4 &&
+               arguments.TryGetValue(
+                   "x-queue-type",
+                   out var queueType) &&
+               Equals(queueType, expectedQueueType) &&
                arguments.TryGetValue("x-max-length", out var maxLength) &&
                Equals(maxLength, options.UnroutableQueueMaxLength) &&
                arguments.TryGetValue(

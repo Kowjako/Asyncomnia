@@ -111,4 +111,19 @@ public sealed class RabbitMqConsumerBuilderTests
         Assert.Equal((ushort)17, subscription.PrefetchCount);
         Assert.Single(runtimeOptions.Subscriptions);
     }
+
+    [Fact]
+    public void ApplyTo_WithSubscriptionQueueType_CopiesQueueTypeOverride()
+    {
+        var builder = new RabbitMqConsumerBuilder("billing-service");
+        builder.ConfigureSubscription(
+            "events/orders",
+            options => options.QueueType = RabbitMqQueueType.Classic);
+        var runtimeOptions = new RabbitMqConsumerOptions();
+
+        builder.ApplyTo(runtimeOptions);
+
+        var subscription = runtimeOptions.GetSubscriptionSettings("events/orders");
+        Assert.Equal(RabbitMqQueueType.Classic, subscription.QueueType);
+    }
 }

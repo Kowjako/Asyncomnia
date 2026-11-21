@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -56,7 +57,8 @@ internal sealed class RabbitMqDeadLetterTopologyCreator(IRabbitMqChannelFactory 
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
-                arguments: null,
+                arguments: RabbitMqQueueArgumentsFactory.Create(new RabbitMqQueueDeclarationSettings(
+                    QueueType: _options.DefaultQueueType)),
                 passive: false,
                 noWait: false,
                 cancellationToken: token);

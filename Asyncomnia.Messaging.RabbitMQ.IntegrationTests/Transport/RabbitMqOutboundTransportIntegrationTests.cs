@@ -3,6 +3,7 @@ using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Infrastructure;
 using Asyncomnia.Messaging.RabbitMQ.IntegrationTests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
@@ -272,8 +273,12 @@ public sealed class RabbitMqOutboundTransportIntegrationTests
             durable: true,
             exclusive: false,
             autoDelete: false,
-            arguments: RabbitMqUnroutableQueueArgumentsFactory.Create(
-                new RabbitMqOptions()),
+            arguments: RabbitMqQueueArgumentsFactory.Create(
+                new RabbitMqQueueDeclarationSettings(
+                    QueueType: RabbitMqQueueType.Quorum,
+                    MaxLength: 10_000,
+                    MaxLengthBytes: 256L * 1024 * 1024,
+                    Overflow: RabbitMqQueueOverflowStrategy.DropHead)),
             passive: false,
             noWait: false,
             cancellationToken: token);

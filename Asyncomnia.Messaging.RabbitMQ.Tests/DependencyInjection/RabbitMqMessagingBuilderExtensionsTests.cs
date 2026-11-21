@@ -314,6 +314,44 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseRabbitMq_WithQueueTypes_ConfiguresGlobalAndSubscriptionTypes()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+        builder.UseRabbitMq(rabbitMq =>
+        {
+            rabbitMq.ConnectionString = ConnectionString;
+            rabbitMq.DefaultQueueType = RabbitMqQueueType.Classic;
+            rabbitMq.ConfigureConsumer(
+                "billing-service",
+                consumer => consumer.ConfigureSubscription(
+                    "events/orders",
+                    subscription =>
+                        subscription.QueueType = RabbitMqQueueType.Quorum));
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var rabbitMqOptions = provider
+            .GetRequiredService<IOptions<RabbitMqOptions>>()
+            .Value;
+        var consumerOptions = provider
+            .GetRequiredService<IOptions<RabbitMqConsumerOptions>>()
+            .Value;
+
+        Assert.Equal(
+            RabbitMqQueueType.Classic,
+            rabbitMqOptions.DefaultQueueType);
+        Assert.Equal(
+            RabbitMqQueueType.Classic,
+            consumerOptions.DefaultQueueType);
+        Assert.Equal(
+            RabbitMqQueueType.Quorum,
+            consumerOptions
+                .GetSubscriptionSettings("events/orders")
+                .QueueType);
+    }
+
+    [Fact]
     public void UseRabbitMq_WithConsumer_RegistersDeadLetterPublisherAsSingleton()
     {
         var services = new ServiceCollection();

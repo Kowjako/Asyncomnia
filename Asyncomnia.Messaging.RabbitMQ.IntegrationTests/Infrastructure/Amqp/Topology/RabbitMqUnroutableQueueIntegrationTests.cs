@@ -1,6 +1,6 @@
 using System.Text;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
-using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.IntegrationTests.Infrastructure.Amqp.Topology;
@@ -25,11 +25,6 @@ public sealed class RabbitMqUnroutableQueueIntegrationTests(
             cancellationToken: token);
         var exchangeName = $"asyncomnia-tests-{Guid.NewGuid():N}";
         var queueName = $"asyncomnia-tests-{Guid.NewGuid():N}";
-        var options = new RabbitMqOptions
-        {
-            UnroutableQueueMaxLength = 2,
-            UnroutableQueueMaxLengthBytes = 1024 * 1024
-        };
         await channel.ExchangeDeclareAsync(
             exchangeName,
             ExchangeType.Fanout,
@@ -44,8 +39,12 @@ public sealed class RabbitMqUnroutableQueueIntegrationTests(
             durable: false,
             exclusive: true,
             autoDelete: true,
-            arguments: RabbitMqUnroutableQueueArgumentsFactory.Create(
-                options),
+            arguments: RabbitMqQueueArgumentsFactory.Create(
+                new RabbitMqQueueDeclarationSettings(
+                    QueueType: RabbitMqQueueType.Classic,
+                    MaxLength: 2,
+                    MaxLengthBytes: 1024 * 1024,
+                    Overflow: RabbitMqQueueOverflowStrategy.DropHead)),
             passive: false,
             noWait: false,
             cancellationToken: token);

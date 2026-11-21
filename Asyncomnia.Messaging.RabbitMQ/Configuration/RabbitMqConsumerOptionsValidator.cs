@@ -21,20 +21,26 @@ internal sealed class RabbitMqConsumerOptionsValidator : IValidateOptions<Rabbit
             return ValidateOptionsResult.Fail("RabbitMqConsumerOptions:DefaultDispatcherConcurrency must be greater than 0");
         }
 
+        if (!Enum.IsDefined(options.DefaultQueueType))
+        {
+            return ValidateOptionsResult.Fail("RabbitMqConsumerOptions:DefaultQueueType is invalid");
+        }
+
         foreach (var (exchangeName, subscription) in options.Subscriptions)
         {
             if (subscription.PrefetchCount is 0)
             {
-                return ValidateOptionsResult.Fail(
-                    $"RabbitMqConsumerOptions subscription '{exchangeName}':" +
-                    $"{nameof(subscription.PrefetchCount)} must be greater than 0");
+                return ValidateOptionsResult.Fail($"RabbitMqConsumerOptions subscription '{exchangeName}': {nameof(subscription.PrefetchCount)} must be greater than 0");
             }
 
             if (subscription.DispatcherConcurrency is 0)
             {
-                return ValidateOptionsResult.Fail(
-                    $"RabbitMqConsumerOptions subscription '{exchangeName}':" +
-                    $"{nameof(subscription.DispatcherConcurrency)} must be greater than 0");
+                return ValidateOptionsResult.Fail($"RabbitMqConsumerOptions subscription '{exchangeName}': {nameof(subscription.DispatcherConcurrency)} must be greater than 0");
+            }
+
+            if (subscription.QueueType is { } queueType && !Enum.IsDefined(queueType))
+            {
+                return ValidateOptionsResult.Fail($"RabbitMqConsumerOptions subscription '{exchangeName}': {nameof(subscription.QueueType)} is invalid");
             }
         }
 

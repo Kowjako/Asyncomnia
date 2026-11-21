@@ -61,6 +61,20 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenDefaultQueueTypeIsInvalid_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.DefaultQueueType = (RabbitMqQueueType)int.MaxValue;
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqConsumerOptions.DefaultQueueType),
+            result.FailureMessage);
+    }
+
+    [Fact]
     public void Validate_WhenSubscriptionPrefetchCountIsZero_ReturnsFailure()
     {
         var options = CreateValidOptions();
@@ -88,6 +102,24 @@ public sealed class RabbitMqConsumerOptionsValidatorTests
         Assert.True(result.Failed);
         Assert.Contains("commands/long-work-job", result.FailureMessage);
         Assert.Contains(nameof(RabbitMqSubscriptionOptions.DispatcherConcurrency), result.FailureMessage);
+    }
+
+    [Fact]
+    public void Validate_WhenSubscriptionQueueTypeIsInvalid_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.ConfigureSubscription(
+            "commands/long-work-job",
+            subscription =>
+                subscription.QueueType = (RabbitMqQueueType)int.MaxValue);
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("commands/long-work-job", result.FailureMessage);
+        Assert.Contains(
+            nameof(RabbitMqSubscriptionOptions.QueueType),
+            result.FailureMessage);
     }
 
     [Fact]

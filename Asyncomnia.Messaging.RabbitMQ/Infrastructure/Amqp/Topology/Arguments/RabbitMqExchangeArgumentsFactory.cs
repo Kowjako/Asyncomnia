@@ -1,4 +1,4 @@
-﻿namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+﻿namespace Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 
 internal static class RabbitMqExchangeArgumentsFactory
 {

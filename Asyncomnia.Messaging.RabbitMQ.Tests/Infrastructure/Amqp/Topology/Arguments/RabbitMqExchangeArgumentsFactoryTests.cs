@@ -1,6 +1,7 @@
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 
-namespace Asyncomnia.Messaging.RabbitMQ.Tests.Infrastructure.Amqp.Topology;
+namespace Asyncomnia.Messaging.RabbitMQ.Tests.Infrastructure.Amqp.Topology.Arguments;
 
 public sealed class RabbitMqExchangeArgumentsFactoryTests
 {

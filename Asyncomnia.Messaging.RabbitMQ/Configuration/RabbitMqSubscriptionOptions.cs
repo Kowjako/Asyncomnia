@@ -21,4 +21,6 @@ public sealed class RabbitMqSubscriptionOptions
     /// by a single consumer.
     /// </summary>
     public ushort? DispatcherConcurrency { get; set; }
+
+    public RabbitMqQueueType? QueueType { get; set; }
 }

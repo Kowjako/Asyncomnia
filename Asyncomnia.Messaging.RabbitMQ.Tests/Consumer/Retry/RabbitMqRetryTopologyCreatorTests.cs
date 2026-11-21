@@ -40,6 +40,7 @@ public sealed class RabbitMqRetryTopologyCreatorTests
         var options = new RabbitMqConsumerOptions
         {
             EndpointName = "billing-service",
+            DefaultQueueType = RabbitMqQueueType.Classic,
             BrokerRetriesEnabled = true,
             BrokerRetryDelays =
             [
@@ -81,7 +82,8 @@ public sealed class RabbitMqRetryTopologyCreatorTests
             SetupRetryTopologyDeclaration(
                 channel,
                 retryTopology,
-                returnExchange);
+                returnExchange,
+                queueType: options.DefaultQueueType);
         }
 
         foreach (var consumerQueueName in consumerQueueNames)
@@ -130,7 +132,8 @@ public sealed class RabbitMqRetryTopologyCreatorTests
                         HasRetryQueueArguments(
                             arguments,
                             retryTopology.DelayMilliseconds,
-                            returnExchange)),
+                            returnExchange,
+                            RabbitMqQueueType.Classic)),
                     false,
                     false,
                     CancellationToken.None),
@@ -199,7 +202,8 @@ public sealed class RabbitMqRetryTopologyCreatorTests
             channel,
             retryTopology,
             returnExchange,
-            token);
+            token,
+            options.DefaultQueueType);
         SetupQueueBinding(
             channel,
             consumerQueueName,
@@ -314,7 +318,8 @@ public sealed class RabbitMqRetryTopologyCreatorTests
         Mock<IChannel> channel,
         RetryTopology topology,
         string returnExchange,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        RabbitMqQueueType queueType = RabbitMqQueueType.Quorum)
     {
         SetupExchangeDeclaration(
             channel,
@@ -331,7 +336,8 @@ public sealed class RabbitMqRetryTopologyCreatorTests
                     HasRetryQueueArguments(
                         arguments,
                         topology.DelayMilliseconds,
-                        returnExchange)),
+                        returnExchange,
+                        queueType)),
                 false,
                 false,
                 token))
@@ -366,9 +372,18 @@ public sealed class RabbitMqRetryTopologyCreatorTests
     private static bool HasRetryQueueArguments(
         IDictionary<string, object?> arguments,
         long delayMilliseconds,
-        string returnExchange)
+        string returnExchange,
+        RabbitMqQueueType queueType)
     {
-        return arguments.Count == 2
+        var expectedQueueType = queueType == RabbitMqQueueType.Quorum
+            ? "quorum"
+            : "classic";
+
+        return arguments.Count == 3
+            && arguments.TryGetValue(
+                "x-queue-type",
+                out var queueTypeValue)
+            && Equals(queueTypeValue, expectedQueueType)
             && arguments.TryGetValue(
                 "x-message-ttl",
                 out var messageTimeToLive)

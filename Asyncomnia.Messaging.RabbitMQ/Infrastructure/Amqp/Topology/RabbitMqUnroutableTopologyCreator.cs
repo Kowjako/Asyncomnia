@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -50,7 +51,11 @@ internal sealed class RabbitMqUnroutableTopologyCreator(
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
-                arguments: RabbitMqUnroutableQueueArgumentsFactory.Create(_rabbitMqOptions),
+                arguments: RabbitMqQueueArgumentsFactory.Create(new RabbitMqQueueDeclarationSettings(
+                    QueueType: _rabbitMqOptions.DefaultQueueType,
+                    MaxLength: _rabbitMqOptions.UnroutableQueueMaxLength,
+                    MaxLengthBytes: _rabbitMqOptions.UnroutableQueueMaxLengthBytes,
+                    Overflow: RabbitMqQueueOverflowStrategy.DropHead)),
                 passive: false,
                 noWait: false,
                 cancellationToken: token);

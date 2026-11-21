@@ -310,7 +310,10 @@ public sealed class RabbitMqConsumerHostedServiceTests
                     true,
                     false,
                     false,
-                    null,
+                    It.Is<IDictionary<string, object?>?>(
+                        arguments => HasQueueType(
+                            arguments,
+                            subscription.Settings.QueueType)),
                     false,
                     false,
                     CancellationToken.None))
@@ -392,6 +395,20 @@ public sealed class RabbitMqConsumerHostedServiceTests
             channel,
             retryTopologyCreator,
             deadLetterTopologyCreator);
+    }
+
+    private static bool HasQueueType(
+        IDictionary<string, object?>? arguments,
+        RabbitMqQueueType queueType)
+    {
+        var expected = queueType == RabbitMqQueueType.Quorum
+            ? "quorum"
+            : "classic";
+
+        return arguments is not null &&
+               arguments.Count == 1 &&
+               arguments.TryGetValue("x-queue-type", out var value) &&
+               Equals(value, expected);
     }
 
     private sealed record HostedServiceFixture(

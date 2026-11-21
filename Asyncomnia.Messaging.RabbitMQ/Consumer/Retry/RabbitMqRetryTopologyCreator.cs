@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -58,6 +59,11 @@ internal sealed class RabbitMqRetryTopologyCreator(IRabbitMqChannelFactory chann
             var exchangeName = $"{Prefix}retry-{delayMilliseconds}ms";
             var queueName = $"{exchangeName}-queue";
 
+            var queueArguments = RabbitMqQueueArgumentsFactory.Create(new RabbitMqQueueDeclarationSettings(
+                QueueType: _options.DefaultQueueType,
+                MessageTtl: delay,
+                DeadLetterExchange: ReturnExchange));
+
             await channel.ExchangeDeclareAsync(
                 exchange: exchangeName,
                 type: ExchangeType.Fanout,
@@ -67,12 +73,6 @@ internal sealed class RabbitMqRetryTopologyCreator(IRabbitMqChannelFactory chann
                 passive: false,
                 noWait: false,
                 cancellationToken: token);
-
-            var queueArguments = new Dictionary<string, object?>
-            {
-                ["x-message-ttl"] = delayMilliseconds,
-                ["x-dead-letter-exchange"] = ReturnExchange
-            };
 
             await channel.QueueDeclareAsync(
                 queue: queueName,

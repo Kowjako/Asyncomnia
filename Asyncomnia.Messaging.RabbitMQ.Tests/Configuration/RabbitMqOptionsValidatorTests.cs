@@ -78,6 +78,20 @@ public sealed class RabbitMqOptionsValidatorTests
             result.FailureMessage);
     }
 
+    [Fact]
+    public void Validate_WhenDefaultQueueTypeIsInvalid_ReturnsFailure()
+    {
+        var options = CreateValidOptions();
+        options.DefaultQueueType = (RabbitMqQueueType)int.MaxValue;
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            nameof(RabbitMqOptions.DefaultQueueType),
+            result.FailureMessage);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

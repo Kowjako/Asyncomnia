@@ -5,6 +5,14 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Configuration;
 public sealed class RabbitMqConsumerOptionsTests
 {
     [Fact]
+    public void DefaultQueueType_ByDefault_IsQuorum()
+    {
+        var options = new RabbitMqConsumerOptions();
+
+        Assert.Equal(RabbitMqQueueType.Quorum, options.DefaultQueueType);
+    }
+
+    [Fact]
     public void DeadLetteringEnabled_ByDefault_IsTrue()
     {
         var options = new RabbitMqConsumerOptions();
@@ -48,8 +56,25 @@ public sealed class RabbitMqConsumerOptionsTests
         var settings = options.GetSubscriptionSettings("events/clients");
 
         Assert.True(settings.SingleActiveConsumer);
+        Assert.Equal(RabbitMqQueueType.Quorum, settings.QueueType);
         Assert.Equal((ushort)3, settings.PrefetchCount);
         Assert.Equal((ushort)4, settings.DispatcherConcurrency);
+    }
+
+    [Fact]
+    public void GetSubscriptionSettings_WithQueueTypeOverride_UsesOverride()
+    {
+        var options = new RabbitMqConsumerOptions
+        {
+            DefaultQueueType = RabbitMqQueueType.Quorum
+        };
+        options.ConfigureSubscription(
+            "commands/long-work-job",
+            subscription => subscription.QueueType = RabbitMqQueueType.Classic);
+
+        var settings = options.GetSubscriptionSettings("commands/long-work-job");
+
+        Assert.Equal(RabbitMqQueueType.Classic, settings.QueueType);
     }
 
     [Fact]

@@ -18,6 +18,8 @@ public sealed class RabbitMqBuilder
 
     internal bool ConsumerConfigured => _consumer is not null;
 
+    public RabbitMqQueueType DefaultQueueType { get; set; } = RabbitMqQueueType.Quorum;
+
     public void CaptureUnroutableEvents(int maxLength, long maxBytes)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 1);
@@ -56,6 +58,7 @@ public sealed class RabbitMqBuilder
         options.CaptureUnroutableEvents = CaptureUnroutableEventsEnabled;
         options.UnroutableQueueMaxLength = UnroutableQueueMaxLength;
         options.UnroutableQueueMaxLengthBytes = UnroutableQueueMaxLengthBytes;
+        options.DefaultQueueType = DefaultQueueType;
     }
 
     internal void ApplyConsumerTo(RabbitMqConsumerOptions options)
@@ -64,6 +67,8 @@ public sealed class RabbitMqBuilder
         {
             throw new InvalidOperationException("RabbitMQ consumer is not configured.");
         }
+
+        options.DefaultQueueType = DefaultQueueType;
 
         _consumer.ApplyTo(options);
     }

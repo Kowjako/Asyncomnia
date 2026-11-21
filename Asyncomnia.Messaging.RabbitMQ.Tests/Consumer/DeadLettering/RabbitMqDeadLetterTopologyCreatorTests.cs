@@ -46,7 +46,9 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
         var channelFactory =
             new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
         var channel = new Mock<IChannel>(MockBehavior.Strict);
-        var creator = CreateCreator(channelFactory);
+        var creator = CreateCreator(
+            channelFactory,
+            queueType: RabbitMqQueueType.Classic);
         var sourceQueueNames = new[]
         {
             "commands/long-work-job/subscription/worker-service",
@@ -64,7 +66,8 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
             SetupQueueDeclaration(
                 channel,
                 queueName,
-                exchangeName);
+                exchangeName,
+                RabbitMqQueueType.Classic);
         }
 
         await creator.DeclareAsync(
@@ -90,7 +93,10 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                     true,
                     false,
                     false,
-                    null,
+                    It.Is<IDictionary<string, object?>?>(
+                        arguments => HasQueueType(
+                            arguments,
+                            RabbitMqQueueType.Classic)),
                     false,
                     false,
                     CancellationToken.None),
@@ -140,7 +146,10 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                 true,
                 false,
                 false,
-                null,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasQueueType(
+                        arguments,
+                        RabbitMqQueueType.Quorum)),
                 false,
                 false,
                 CancellationToken.None),
@@ -194,7 +203,8 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
 
     private static RabbitMqDeadLetterTopologyCreator CreateCreator(
         Mock<IRabbitMqChannelFactory> channelFactory,
-        bool deadLetteringEnabled = true)
+        bool deadLetteringEnabled = true,
+        RabbitMqQueueType queueType = RabbitMqQueueType.Quorum)
     {
         return new RabbitMqDeadLetterTopologyCreator(
             channelFactory.Object,
@@ -203,7 +213,8 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                 new RabbitMqConsumerOptions
                 {
                     EndpointName = "test-service",
-                    DeadLetteringEnabled = deadLetteringEnabled
+                    DeadLetteringEnabled = deadLetteringEnabled,
+                    DefaultQueueType = queueType
                 }));
     }
 
@@ -241,7 +252,8 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
     private static void SetupQueueDeclaration(
         Mock<IChannel> channel,
         string queueName,
-        string exchangeName)
+        string exchangeName,
+        RabbitMqQueueType queueType = RabbitMqQueueType.Quorum)
     {
         channel
             .Setup(x => x.QueueDeclareAsync(
@@ -249,7 +261,8 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
                 true,
                 false,
                 false,
-                null,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasQueueType(arguments, queueType)),
                 false,
                 false,
                 CancellationToken.None))
@@ -272,7 +285,25 @@ public sealed class RabbitMqDeadLetterTopologyCreatorTests
         {
             ExchangeName = queueName.Split("/subscription/")[0],
             QueueName = queueName,
-            Settings = new RabbitMqSubscriptionSettings(false, 1, 1)
+            Settings = new RabbitMqSubscriptionSettings(
+                RabbitMqQueueType.Quorum,
+                false,
+                1,
+                1)
         };
+    }
+
+    private static bool HasQueueType(
+        IDictionary<string, object?>? arguments,
+        RabbitMqQueueType queueType)
+    {
+        var expected = queueType == RabbitMqQueueType.Quorum
+            ? "quorum"
+            : "classic";
+
+        return arguments is not null &&
+               arguments.Count == 1 &&
+               arguments.TryGetValue("x-queue-type", out var value) &&
+               Equals(value, expected);
     }
 }

@@ -5,6 +5,14 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Configuration;
 public sealed class RabbitMqBuilderTests
 {
     [Fact]
+    public void Constructor_UsesQuorumQueuesByDefault()
+    {
+        var builder = new RabbitMqBuilder();
+
+        Assert.Equal(RabbitMqQueueType.Quorum, builder.DefaultQueueType);
+    }
+
+    [Fact]
     public void CaptureUnroutableEvents_ConfiguresAndEnablesCapture()
     {
         var builder = new RabbitMqBuilder();
@@ -66,6 +74,7 @@ public sealed class RabbitMqBuilderTests
         builder.ApplyConsumerTo(options);
 
         Assert.Equal("billing-service", options.EndpointName);
+        Assert.Equal(RabbitMqQueueType.Quorum, options.DefaultQueueType);
         Assert.Equal((ushort)1, options.DefaultPrefetchCount);
         Assert.Equal((ushort)1, options.DefaultDispatcherConcurrency);
         Assert.False(options.DefaultSingleActiveConsumer);
@@ -78,6 +87,24 @@ public sealed class RabbitMqBuilderTests
                 TimeSpan.FromMinutes(5)
             ],
             options.BrokerRetryDelays);
+    }
+
+    [Fact]
+    public void ApplyTo_WithConfiguredQueueType_AppliesItToPublisherAndConsumerOptions()
+    {
+        var builder = new RabbitMqBuilder
+        {
+            DefaultQueueType = RabbitMqQueueType.Classic
+        };
+        builder.ConfigureConsumer("billing-service");
+        var rabbitMqOptions = new RabbitMqOptions();
+        var consumerOptions = new RabbitMqConsumerOptions();
+
+        builder.ApplyTo(rabbitMqOptions);
+        builder.ApplyConsumerTo(consumerOptions);
+
+        Assert.Equal(RabbitMqQueueType.Classic, rabbitMqOptions.DefaultQueueType);
+        Assert.Equal(RabbitMqQueueType.Classic, consumerOptions.DefaultQueueType);
     }
 
     [Fact]

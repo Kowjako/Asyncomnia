@@ -5,6 +5,14 @@ namespace Asyncomnia.Messaging.RabbitMQ.Tests.Configuration;
 public sealed class RabbitMqOptionsTests
 {
     [Fact]
+    public void DefaultQueueType_IsQuorum()
+    {
+        var options = new RabbitMqOptions();
+
+        Assert.Equal(RabbitMqQueueType.Quorum, options.DefaultQueueType);
+    }
+
+    [Fact]
     public void CaptureUnroutableEvents_DefaultsToEnabled()
     {
         var options = new RabbitMqOptions();

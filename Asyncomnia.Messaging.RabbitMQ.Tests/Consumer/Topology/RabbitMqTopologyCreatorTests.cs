@@ -133,6 +133,40 @@ public sealed class RabbitMqTopologyCreatorTests
     }
 
     [Fact]
+    public async Task DeclareAsync_WithQueueTypeOverride_DeclaresQueueWithConfiguredType()
+    {
+        var channelFactory =
+            new Mock<IRabbitMqChannelFactory>(MockBehavior.Strict);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        var creator = CreateCreator(
+            channelFactory,
+            eventTypes: [typeof(ClientCreatedEvent)],
+            configureOptions: options => options.ConfigureSubscription(
+                "events/clients",
+                subscription =>
+                    subscription.QueueType = RabbitMqQueueType.Classic));
+        SetupChannel(channelFactory, channel);
+        SetupExchangeDeclaration(channel, "events/clients");
+        SetupQueueDeclaration(
+            channel,
+            "events/clients/subscription/test-service",
+            RabbitMqQueueType.Classic);
+        SetupBinding(
+            channel,
+            "events/clients/subscription/test-service",
+            "events/clients",
+            "client-created-event");
+
+        var subscriptions = await creator.DeclareAsync();
+
+        Assert.Equal(
+            RabbitMqQueueType.Classic,
+            Assert.Single(subscriptions).Settings.QueueType);
+        channelFactory.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
     public async Task DeclareAsync_WithUnroutableEventCapture_DeclaresFallbackBeforeEventExchange()
     {
         var channelFactory =
@@ -376,7 +410,10 @@ public sealed class RabbitMqTopologyCreatorTests
             .Returns(Task.CompletedTask);
     }
 
-    private static void SetupQueueDeclaration(Mock<IChannel> channel, string queueName)
+    private static void SetupQueueDeclaration(
+        Mock<IChannel> channel,
+        string queueName,
+        RabbitMqQueueType queueType = RabbitMqQueueType.Quorum)
     {
         channel
             .Setup(x => x.QueueDeclareAsync(
@@ -384,7 +421,11 @@ public sealed class RabbitMqTopologyCreatorTests
                 true,
                 false,
                 false,
-                null,
+                It.Is<IDictionary<string, object?>?>(
+                    arguments => HasQueueArguments(
+                        arguments,
+                        queueType,
+                        singleActiveConsumer: false)),
                 false,
                 false,
                 CancellationToken.None))
@@ -402,20 +443,35 @@ public sealed class RabbitMqTopologyCreatorTests
                 false,
                 false,
                 It.Is<IDictionary<string, object?>?>(
-                    arguments => HasSingleActiveConsumer(arguments)),
+                    arguments => HasQueueArguments(
+                        arguments,
+                        RabbitMqQueueType.Quorum,
+                        singleActiveConsumer: true)),
                 false,
                 false,
                 CancellationToken.None))
             .ReturnsAsync(new QueueDeclareOk(queueName, 0, 0));
     }
 
-    private static bool HasSingleActiveConsumer(
-        IDictionary<string, object?>? arguments)
+    private static bool HasQueueArguments(
+        IDictionary<string, object?>? arguments,
+        RabbitMqQueueType queueType,
+        bool singleActiveConsumer)
     {
+        var expectedCount = singleActiveConsumer ? 2 : 1;
+        var expectedQueueType = queueType == RabbitMqQueueType.Quorum
+            ? "quorum"
+            : "classic";
+
         return arguments is not null &&
-               arguments.Count == 1 &&
-               arguments.TryGetValue("x-single-active-consumer", out var value) &&
-               value is true;
+               arguments.Count == expectedCount &&
+               arguments.TryGetValue("x-queue-type", out var queueTypeValue) &&
+               Equals(queueTypeValue, expectedQueueType) &&
+               (!singleActiveConsumer ||
+                arguments.TryGetValue(
+                    "x-single-active-consumer",
+                    out var singleActiveConsumerValue) &&
+                singleActiveConsumerValue is true);
     }
 
     private static bool HasUnroutableFallback(

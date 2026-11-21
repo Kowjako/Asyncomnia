@@ -292,9 +292,11 @@ public sealed class RabbitMqConsumerIntegrationTests
                 $"commands/long-work-job/subscription/{endpointName}";
             var queueStats = await WaitForQueueStatsAsync(
                 queueName,
-                stats => stats.ConsumerCount == 2,
+                // For a quorum queue with SAC, QueueDeclareOk reports only
+                // the active consumer. Standby consumers are not included.
+                stats => stats.ConsumerCount == 1,
                 ct);
-            Assert.Equal((uint)2, queueStats.ConsumerCount);
+            Assert.Equal((uint)1, queueStats.ConsumerCount);
 
             await using var scope = firstHost.Services.CreateAsyncScope();
             var sender = scope.ServiceProvider
@@ -374,7 +376,9 @@ public sealed class RabbitMqConsumerIntegrationTests
                 $"commands/long-work-job/subscription/{endpointName}";
             await WaitForQueueStatsAsync(
                 queueName,
-                stats => stats.ConsumerCount == 2,
+                // The second consumer is registered as SAC standby, while
+                // quorum queue statistics expose only the active consumer.
+                stats => stats.ConsumerCount == 1,
                 ct);
             await using var scope = publisherProvider.CreateAsyncScope();
             var sender = scope.ServiceProvider

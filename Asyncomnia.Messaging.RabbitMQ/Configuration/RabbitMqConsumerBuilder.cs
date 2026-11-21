@@ -89,6 +89,7 @@ public sealed class RabbitMqConsumerBuilder
                     subscription.SingleActiveConsumer = configured.SingleActiveConsumer;
                     subscription.PrefetchCount = configured.PrefetchCount;
                     subscription.DispatcherConcurrency = configured.DispatcherConcurrency;
+                    subscription.QueueType = configured.QueueType;
                 });
         }
     }

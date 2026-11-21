@@ -1,5 +1,6 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Topology.Arguments;
 using RabbitMQ.Client;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
@@ -57,7 +58,9 @@ internal sealed class RabbitMqTopologyCreator(
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
-                arguments: CreateQueueArguments(sub),
+                arguments: RabbitMqQueueArgumentsFactory.Create(new RabbitMqQueueDeclarationSettings(
+                    QueueType: sub.Settings.QueueType,
+                    SingleActiveConsumer: sub.Settings.SingleActiveConsumer)),
                 noWait: false,
                 cancellationToken: token);
 
@@ -74,18 +77,5 @@ internal sealed class RabbitMqTopologyCreator(
         }
 
         return subscriptions;
-    }
-
-    private static IDictionary<string, object?>? CreateQueueArguments(RabbitMqSubscription subscription)
-    {
-        if (!subscription.Settings.SingleActiveConsumer)
-        {
-            return null;
-        }
-
-        return new Dictionary<string, object?>
-        {
-            ["x-single-active-consumer"] = true
-        };
     }
 }

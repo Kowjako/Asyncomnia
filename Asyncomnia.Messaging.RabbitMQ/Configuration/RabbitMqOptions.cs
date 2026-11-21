@@ -38,4 +38,6 @@ internal sealed class RabbitMqOptions
     /// All applications sharing the same RabbitMQ virtual host must use the same value.
     /// </summary>
     public long UnroutableQueueMaxLengthBytes { get; set; } = 256L * 1024 * 1024;
+
+    public RabbitMqQueueType DefaultQueueType { get; set; } = RabbitMqQueueType.Quorum;
 }

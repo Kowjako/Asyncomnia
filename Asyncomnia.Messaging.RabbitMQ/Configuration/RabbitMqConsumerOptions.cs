@@ -45,6 +45,8 @@ internal sealed class RabbitMqConsumerOptions
         TimeSpan.FromMinutes(5)
     ];
 
+    public RabbitMqQueueType DefaultQueueType { get; set; } = RabbitMqQueueType.Quorum;
+
     public void ConfigureSubscription(string exchangeName, Action<RabbitMqSubscriptionOptions> configure)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exchangeName);
@@ -66,6 +68,7 @@ internal sealed class RabbitMqConsumerOptions
         _subscriptions.TryGetValue(exchangeName, out var configured);
 
         return new RabbitMqSubscriptionSettings(
+            configured?.QueueType ?? DefaultQueueType,
             configured?.SingleActiveConsumer ?? DefaultSingleActiveConsumer,
             configured?.PrefetchCount ?? DefaultPrefetchCount,
             configured?.DispatcherConcurrency ??

@@ -17,6 +17,11 @@ internal sealed class RabbitMqOptionsValidator : IValidateOptions<RabbitMqOption
             return ValidateOptionsResult.Fail("RabbitMqOptions:ConnectionString must use the amqp or amqps scheme");
         }
 
+        if (!Enum.IsDefined(options.DefaultQueueType))
+        {
+            return ValidateOptionsResult.Fail("RabbitMqOptions:DefaultQueueType is invalid");
+        }
+
         if (options.PublisherChannelCount <= 0)
         {
             return ValidateOptionsResult.Fail("RabbitMqOptions:PublisherChannelCount must be greater than 0");
