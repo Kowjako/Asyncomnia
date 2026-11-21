@@ -5,6 +5,7 @@ using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Unhandled;
 using Asyncomnia.Messaging.RabbitMQ.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Connection;
@@ -384,6 +385,42 @@ public sealed class RabbitMqMessagingBuilderExtensionsTests
         Assert.Equal(
             typeof(RabbitMqDeadLetterTopologyCreator),
             registration.ImplementationType);
+    }
+
+    [Fact]
+    public void UseRabbitMq_WithConsumer_RegistersUnhandledServicesAsSingletons()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddAsyncomniaMessaging();
+
+        ConfigureConsumer(builder);
+
+        var routeResolver = Assert.Single(
+            services,
+            x => x.ServiceType ==
+                typeof(RabbitMqUnhandledRouteResolver));
+        Assert.Equal(ServiceLifetime.Singleton, routeResolver.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqUnhandledRouteResolver),
+            routeResolver.ImplementationType);
+
+        var topologyCreator = Assert.Single(
+            services,
+            x => x.ServiceType ==
+                typeof(IRabbitMqUnhandledTopologyCreator));
+        Assert.Equal(ServiceLifetime.Singleton, topologyCreator.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqUnhandledTopologyCreator),
+            topologyCreator.ImplementationType);
+
+        var strategy = Assert.Single(
+            services,
+            x => x.ServiceType ==
+                typeof(RabbitMqUnhandledMessageStrategy));
+        Assert.Equal(ServiceLifetime.Singleton, strategy.Lifetime);
+        Assert.Equal(
+            typeof(RabbitMqUnhandledMessageStrategy),
+            strategy.ImplementationType);
     }
 
     [Fact]

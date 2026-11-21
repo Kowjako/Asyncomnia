@@ -1,6 +1,7 @@
 ﻿using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Topology;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Unhandled;
 using Microsoft.Extensions.Hosting;
 
 namespace Asyncomnia.Messaging.RabbitMQ.Consumer;
@@ -9,6 +10,7 @@ internal sealed class RabbitMqConsumerHostedService(
     RabbitMqTopologyCreator topologyCreator,
     IRabbitMqRetryTopologyCreator retryTopologyCreator,
     IRabbitMqDeadLetterTopologyCreator deadLetterTopologyCreator,
+    IRabbitMqUnhandledTopologyCreator unhandledTopologyCreator,
     IRabbitMqQueueConsumerFactory consumerFactory) : IHostedService
 {
     private readonly List<IAsyncDisposable> _consumers = [];
@@ -16,6 +18,8 @@ internal sealed class RabbitMqConsumerHostedService(
     public async Task StartAsync(CancellationToken ct)
     {
         var subscriptions = await topologyCreator.DeclareAsync(ct);
+
+        await unhandledTopologyCreator.DeclareAsync(subscriptions, ct);
         await deadLetterTopologyCreator.DeclareAsync(subscriptions, ct);
         await retryTopologyCreator.DeclareAsync(ct);
 

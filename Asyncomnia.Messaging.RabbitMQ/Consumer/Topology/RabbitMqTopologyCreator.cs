@@ -64,12 +64,12 @@ internal sealed class RabbitMqTopologyCreator(
                 noWait: false,
                 cancellationToken: token);
 
-            foreach (var binding in sub.Bindings)
+            foreach (var routingKey in sub.Bindings.Values.Distinct(StringComparer.Ordinal).OrderBy(key => key, StringComparer.Ordinal))
             {
                 await channel.QueueBindAsync(
                     queue: sub.QueueName,
                     exchange: sub.ExchangeName,
-                    routingKey: binding.RoutingKey,
+                    routingKey: routingKey,
                     arguments: null,
                     noWait: false,
                     cancellationToken: token);

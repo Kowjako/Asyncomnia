@@ -1,4 +1,5 @@
-﻿using Asyncomnia.Messaging.Handlers;
+﻿using System.Collections.Frozen;
+using Asyncomnia.Messaging.Handlers;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Routing;
 using Microsoft.Extensions.Options;
@@ -35,9 +36,9 @@ internal sealed class RabbitMqSubscriptionResolver(
                              {
                                  ExchangeName = g.Key,
                                  QueueName = $"{g.Key}/subscription/{_options.EndpointName}",
-                                 Bindings = g.Select(x => new RabbitMqBinding(x.Route.RoutingKey, x.MessageType))
-                                             .OrderBy(x => x.RoutingKey, StringComparer.Ordinal)
-                                             .ToArray(),
+                                 Bindings = g.Select(x => (x.MessageType, x.Route.RoutingKey))
+                                             .OrderBy(x => x.RoutingKey)
+                                             .ToFrozenDictionary(x => x.MessageType, x => x.RoutingKey),
                                  Settings = _options.GetSubscriptionSettings(g.Key),
                                  UseUnroutableFallback =
                                      _rabbitMqOptions.CaptureUnroutableEvents &&

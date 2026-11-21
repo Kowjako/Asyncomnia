@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Internal.Serialization;
@@ -5,6 +6,8 @@ using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Unhandled;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Tests.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
@@ -180,7 +183,7 @@ public sealed class RabbitMqMessageConsumerTests
     }
 
     [Fact]
-    public async Task ConsumeAsync_WhenMessageTypeIsNotConfiguredForSubscription_DoesNotCreateScopeAndNacksWithoutRequeue()
+    public async Task ConsumeAsync_WhenMessageTypeIsNotConfiguredForSubscription_MovesMessageToUnhandledAndAcknowledges()
     {
         var createdPipelines = 0;
         await using var provider = CreateProvider(_ =>
@@ -188,22 +191,31 @@ public sealed class RabbitMqMessageConsumerTests
             createdPipelines++;
             return new DisposableInboundMessagePipeline();
         });
-        var logger =
-            new CapturingLogger<RabbitMqConsumeErrorStrategy>();
         var errorDependencies = CreateErrorStrategy(
-            deadLetteringEnabled: false,
-            logger);
-        errorDependencies.DelayedRetryPublisher
-            .Setup(x => x.TryPublishAsync(
-                It.IsAny<RabbitMqConsumeContext>(),
+            deadLetteringEnabled: true);
+        var unhandledDependencies = CreateUnhandledStrategy();
+        BasicProperties? publishedProperties = null;
+        unhandledDependencies.Publisher
+            .Setup(x => x.PublishAsync(
+                "asyncomnia/unhandled",
+                "unhandled/events/clients/subscription/test-service",
+                true,
+                It.IsAny<BasicProperties>(),
+                It.IsAny<ReadOnlyMemory<byte>>(),
                 CancellationToken.None))
-            .ReturnsAsync(false);
-        var consumer = CreateConsumer(provider, errorDependencies.Strategy);
+            .Callback<string, string, bool, BasicProperties,
+                ReadOnlyMemory<byte>, CancellationToken>(
+                (_, _, _, properties, _, _) =>
+                    publishedProperties = properties)
+            .Returns(Task.CompletedTask);
+        var consumer = CreateConsumer(
+            provider,
+            errorDependencies.Strategy,
+            unhandledDependencies.Strategy);
         var channel = new Mock<IChannel>(MockBehavior.Strict);
         channel
-            .Setup(x => x.BasicNackAsync(
+            .Setup(x => x.BasicAckAsync(
                 1,
-                false,
                 false,
                 CancellationToken.None))
             .Returns(ValueTask.CompletedTask);
@@ -217,19 +229,202 @@ public sealed class RabbitMqMessageConsumerTests
             CancellationToken.None);
 
         Assert.Equal(0, createdPipelines);
-        var logEntry = Assert.Single(
-            logger.Entries,
-            entry => entry.LogLevel == LogLevel.Error);
-        var exception = Assert.IsType<InvalidOperationException>(
-            logEntry.Exception);
-        var expectedMessage =
-            $"Message type '{typeof(ClientCreatedEvent).FullName}' is not configured " +
-            $"for subscription queue '{subscription.QueueName}'";
+        Assert.NotNull(publishedProperties);
         Assert.Equal(
-            expectedMessage,
-            exception.Message);
-        errorDependencies.DelayedRetryPublisher.VerifyAll();
-        errorDependencies.DeadLetterPublisher.VerifyNoOtherCalls();
+            UnhandledMessageReason.NotConfiguredForSubscription,
+            publishedProperties!.Headers![
+                "x-asyncomnia-unhandled-reason"]);
+        errorDependencies.VerifyNoCalls();
+        unhandledDependencies.Publisher.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_WhenContractIsUnknown_MovesMessageToUnhandledAndAcknowledges()
+    {
+        var createdPipelines = 0;
+        await using var provider = CreateProvider(_ =>
+        {
+            createdPipelines++;
+            return new DisposableInboundMessagePipeline();
+        });
+        var errorDependencies = CreateErrorStrategy(
+            deadLetteringEnabled: true);
+        var unhandledDependencies = CreateUnhandledStrategy();
+        BasicProperties? publishedProperties = null;
+        unhandledDependencies.Publisher
+            .Setup(x => x.PublishAsync(
+                "asyncomnia/unhandled",
+                "unhandled/events/clients/subscription/test-service",
+                true,
+                It.IsAny<BasicProperties>(),
+                It.IsAny<ReadOnlyMemory<byte>>(),
+                CancellationToken.None))
+            .Callback<string, string, bool, BasicProperties,
+                ReadOnlyMemory<byte>, CancellationToken>(
+                (_, _, _, properties, _, _) =>
+                    publishedProperties = properties)
+            .Returns(Task.CompletedTask);
+        var consumer = CreateConsumer(
+            provider,
+            errorDependencies.Strategy,
+            unhandledDependencies.Strategy);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicAckAsync(
+                1,
+                false,
+                CancellationToken.None))
+            .Returns(ValueTask.CompletedTask);
+        var originalProperties =
+            RabbitMqMessagePropertiesMapper.MapToBrokerProperties(
+                typeof(ClientCreatedEvent),
+                new MessageMetadata(
+                    Guid.NewGuid(),
+                    DateTimeOffset.UtcNow));
+        var properties = new BasicProperties(originalProperties)
+        {
+            Type = "Contracts.ClientDeleted, Contracts"
+        };
+
+        await consumer.ConsumeAsync(
+            channel.Object,
+            CreateSubscription(),
+            CreateDelivery(new ClientCreatedEvent("Acme"), properties),
+            CancellationToken.None);
+
+        Assert.Equal(0, createdPipelines);
+        Assert.NotNull(publishedProperties);
+        Assert.Equal(
+            properties.Type,
+            publishedProperties!.Type);
+        Assert.Equal(
+            UnhandledMessageReason.UnknownContract,
+            publishedProperties.Headers![
+                "x-asyncomnia-unhandled-reason"]);
+        errorDependencies.VerifyNoCalls();
+        unhandledDependencies.Publisher.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_WhenContractTypeIsMissing_MovesMessageToUnhandledAndAcknowledges()
+    {
+        var createdPipelines = 0;
+        await using var provider = CreateProvider(_ =>
+        {
+            createdPipelines++;
+            return new DisposableInboundMessagePipeline();
+        });
+        var errorDependencies = CreateErrorStrategy(
+            deadLetteringEnabled: true);
+        var unhandledDependencies = CreateUnhandledStrategy();
+        BasicProperties? publishedProperties = null;
+        unhandledDependencies.Publisher
+            .Setup(x => x.PublishAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                true,
+                It.IsAny<BasicProperties>(),
+                It.IsAny<ReadOnlyMemory<byte>>(),
+                CancellationToken.None))
+            .Callback<string, string, bool, BasicProperties,
+                ReadOnlyMemory<byte>, CancellationToken>(
+                (_, _, _, properties, _, _) =>
+                    publishedProperties = properties)
+            .Returns(Task.CompletedTask);
+        var consumer = CreateConsumer(
+            provider,
+            errorDependencies.Strategy,
+            unhandledDependencies.Strategy);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicAckAsync(
+                1,
+                false,
+                CancellationToken.None))
+            .Returns(ValueTask.CompletedTask);
+        var originalProperties =
+            RabbitMqMessagePropertiesMapper.MapToBrokerProperties(
+                typeof(ClientCreatedEvent),
+                new MessageMetadata(
+                    Guid.NewGuid(),
+                    DateTimeOffset.UtcNow));
+        var properties = new BasicProperties(originalProperties)
+        {
+            Type = null
+        };
+
+        await consumer.ConsumeAsync(
+            channel.Object,
+            CreateSubscription(),
+            CreateDelivery(new ClientCreatedEvent("Acme"), properties),
+            CancellationToken.None);
+
+        Assert.Equal(0, createdPipelines);
+        Assert.NotNull(publishedProperties);
+        Assert.Equal(
+            UnhandledMessageReason.MissingContractType,
+            publishedProperties!.Headers![
+                "x-asyncomnia-unhandled-reason"]);
+        errorDependencies.VerifyNoCalls();
+        unhandledDependencies.Publisher.VerifyAll();
+        channel.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_WhenUnhandledPublishFails_NacksWithRequeueWithoutErrorStrategy()
+    {
+        var createdPipelines = 0;
+        await using var provider = CreateProvider(_ =>
+        {
+            createdPipelines++;
+            return new DisposableInboundMessagePipeline();
+        });
+        var errorDependencies = CreateErrorStrategy(
+            deadLetteringEnabled: true);
+        var unhandledDependencies = CreateUnhandledStrategy();
+        unhandledDependencies.Publisher
+            .Setup(x => x.PublishAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                true,
+                It.IsAny<BasicProperties>(),
+                It.IsAny<ReadOnlyMemory<byte>>(),
+                CancellationToken.None))
+            .ThrowsAsync(new InvalidOperationException("broker unavailable"));
+        var consumer = CreateConsumer(
+            provider,
+            errorDependencies.Strategy,
+            unhandledDependencies.Strategy);
+        var channel = new Mock<IChannel>(MockBehavior.Strict);
+        channel
+            .Setup(x => x.BasicNackAsync(
+                1,
+                false,
+                true,
+                CancellationToken.None))
+            .Returns(ValueTask.CompletedTask);
+        var originalProperties =
+            RabbitMqMessagePropertiesMapper.MapToBrokerProperties(
+                typeof(ClientCreatedEvent),
+                new MessageMetadata(
+                    Guid.NewGuid(),
+                    DateTimeOffset.UtcNow));
+        var properties = new BasicProperties(originalProperties)
+        {
+            Type = "Contracts.ClientDeleted, Contracts"
+        };
+
+        await consumer.ConsumeAsync(
+            channel.Object,
+            CreateSubscription(),
+            CreateDelivery(new ClientCreatedEvent("Acme"), properties),
+            CancellationToken.None);
+
+        Assert.Equal(0, createdPipelines);
+        errorDependencies.VerifyNoCalls();
+        unhandledDependencies.Publisher.VerifyAll();
         channel.VerifyAll();
     }
 
@@ -478,13 +673,20 @@ public sealed class RabbitMqMessageConsumerTests
 
     private static RabbitMqMessageConsumer CreateConsumer(
         ServiceProvider provider,
-        RabbitMqConsumeErrorStrategy errorStrategy)
+        RabbitMqConsumeErrorStrategy errorStrategy,
+        RabbitMqUnhandledMessageStrategy? unhandledStrategy = null)
     {
+        unhandledStrategy ??= new RabbitMqUnhandledMessageStrategy(
+            NullLogger<RabbitMqUnhandledMessageStrategy>.Instance,
+            new RabbitMqUnhandledRouteResolver(),
+            new Mock<IRabbitMqPublisher>(MockBehavior.Strict).Object);
+
         return new RabbitMqMessageConsumer(
             provider.GetRequiredService<IServiceScopeFactory>(),
             new MessageJsonSerializer(),
             provider.GetRequiredService<IMessageDispatchCatalog>(),
-            errorStrategy);
+            errorStrategy,
+            unhandledStrategy);
     }
 
     private static MessageDispatchCatalog CreateDispatchCatalog()
@@ -517,6 +719,17 @@ public sealed class RabbitMqMessageConsumerTests
             delayedRetryPublisher);
     }
 
+    private static UnhandledStrategyDependencies CreateUnhandledStrategy()
+    {
+        var publisher = new Mock<IRabbitMqPublisher>(MockBehavior.Strict);
+        var strategy = new RabbitMqUnhandledMessageStrategy(
+            NullLogger<RabbitMqUnhandledMessageStrategy>.Instance,
+            new RabbitMqUnhandledRouteResolver(),
+            publisher.Object);
+
+        return new UnhandledStrategyDependencies(strategy, publisher);
+    }
+
     private static RabbitMqSubscription CreateSubscription(
         Type? messageType = null)
     {
@@ -524,12 +737,10 @@ public sealed class RabbitMqMessageConsumerTests
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
-            Bindings =
-            [
-                new RabbitMqBinding(
-                    "client-created-event",
-                    messageType ?? typeof(ClientCreatedEvent))
-            ],
+            Bindings = new Dictionary<Type, string>
+            {
+                [messageType ?? typeof(ClientCreatedEvent)] = "client-created-event"
+            }.ToFrozenDictionary(),
             Settings = new RabbitMqSubscriptionSettings(
                 RabbitMqQueueType.Quorum,
                 false,
@@ -582,6 +793,10 @@ public sealed class RabbitMqMessageConsumerTests
             DelayedRetryPublisher.VerifyNoOtherCalls();
         }
     }
+
+    private sealed record UnhandledStrategyDependencies(
+        RabbitMqUnhandledMessageStrategy Strategy,
+        Mock<IRabbitMqPublisher> Publisher);
 
     private sealed class DisposableInboundMessagePipeline(Exception? exception = null)
         : IInboundMessagePipeline, IAsyncDisposable

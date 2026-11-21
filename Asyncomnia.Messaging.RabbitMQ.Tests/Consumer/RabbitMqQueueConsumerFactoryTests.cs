@@ -1,10 +1,13 @@
+using System.Collections.Frozen;
 using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
 using Asyncomnia.Messaging.RabbitMQ.Consumer;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.Retry;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Unhandled;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Channels;
+using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Publishing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -151,11 +154,16 @@ public sealed class RabbitMqQueueConsumerFactoryTests
             delayedRetryPublisher.Object,
             Options.Create(new RabbitMqConsumerOptions()),
             NullLogger<RabbitMqConsumeErrorStrategy>.Instance);
+        var unhandledStrategy = new RabbitMqUnhandledMessageStrategy(
+            NullLogger<RabbitMqUnhandledMessageStrategy>.Instance,
+            new RabbitMqUnhandledRouteResolver(),
+            new Mock<IRabbitMqPublisher>(MockBehavior.Strict).Object);
         var messageConsumer = new RabbitMqMessageConsumer(
             provider.GetRequiredService<IServiceScopeFactory>(),
             new MessageJsonSerializer(),
             new MessageDispatchCatalog([]),
-            errorStrategy);
+            errorStrategy,
+            unhandledStrategy);
 
         return new FactoryDependencies(
             provider,
@@ -168,7 +176,7 @@ public sealed class RabbitMqQueueConsumerFactoryTests
         {
             ExchangeName = "events/clients",
             QueueName = "events/clients/subscription/test-service",
-            Bindings = [],
+            Bindings = FrozenDictionary<Type, string>.Empty,
             Settings = settings
         };
     }

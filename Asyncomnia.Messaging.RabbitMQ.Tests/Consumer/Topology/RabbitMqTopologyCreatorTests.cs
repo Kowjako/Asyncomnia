@@ -65,7 +65,9 @@ public sealed class RabbitMqTopologyCreatorTests
             subscription.QueueName);
         Assert.Equal(
             ["client-contract-signed", "client-created-event"],
-            subscription.Bindings.Select(x => x.RoutingKey));
+            subscription.Bindings.Values.OrderBy(
+                routingKey => routingKey,
+                StringComparer.Ordinal));
         channelFactory.VerifyAll();
         channel.VerifyAll();
     }

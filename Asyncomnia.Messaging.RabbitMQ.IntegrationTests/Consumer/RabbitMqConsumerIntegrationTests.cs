@@ -1,3 +1,4 @@
+using System.Text;
 using Asyncomnia.Messaging.Configuration;
 using Asyncomnia.Messaging.DependencyInjection;
 using Asyncomnia.Messaging.RabbitMQ.Configuration;
@@ -628,6 +629,109 @@ public sealed class RabbitMqConsumerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task UnknownContract_IsMovedToUnhandledQueueAndAcknowledged()
+    {
+        var endpointName = CreateEndpointName();
+        var probe = new MessageProbe<ClientCreatedEvent>();
+        using var host = CreateHost(
+            endpointName,
+            services => services.AddSingleton(probe),
+            messaging => messaging
+                .RegisterEventHandler<
+                    ClientCreatedEvent,
+                    ClientCreatedEventHandler>());
+        using var cancellationTokenSource =
+            new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = cancellationTokenSource.Token;
+        var sourceQueueName =
+            $"events/clients/subscription/{endpointName}";
+        var unhandledQueueName = $"unhandled/{sourceQueueName}";
+        var deadLetterQueueName = $"deadletter/{sourceQueueName}";
+        var body = Encoding.UTF8.GetBytes(
+            "{\"clientId\":\"removed-contract\"}");
+        await host.StartAsync(ct);
+
+        try
+        {
+            await WaitForQueueStatsAsync(
+                sourceQueueName,
+                stats => stats.ConsumerCount == 1,
+                ct);
+
+            await using var connection = await CreateConnectionAsync(ct);
+            await using var channel = await connection.CreateChannelAsync(
+                cancellationToken: ct);
+            await channel.QueueBindAsync(
+                sourceQueueName,
+                "events/clients",
+                "client-deleted",
+                arguments: null,
+                noWait: false,
+                cancellationToken: ct);
+            var properties = new BasicProperties
+            {
+                Type = "Contracts.ClientDeleted, Contracts",
+                MessageId = Guid.NewGuid().ToString("D"),
+                DeliveryMode = DeliveryModes.Persistent
+            };
+
+            await channel.BasicPublishAsync(
+                exchange: "events/clients",
+                routingKey: "client-deleted",
+                mandatory: true,
+                basicProperties: properties,
+                body: body,
+                cancellationToken: ct);
+
+            var unhandledStats = await WaitForQueueStatsAsync(
+                unhandledQueueName,
+                stats => stats.MessageCount == 1,
+                ct);
+            var sourceStats = await GetQueueStatsAsync(sourceQueueName, ct);
+            var deadLetterStats = await GetQueueStatsAsync(
+                deadLetterQueueName,
+                ct);
+            var moved = await channel.BasicGetAsync(
+                unhandledQueueName,
+                autoAck: true,
+                cancellationToken: ct);
+
+            Assert.Equal((uint)1, unhandledStats.MessageCount);
+            Assert.Equal((uint)0, sourceStats.MessageCount);
+            Assert.Equal((uint)0, deadLetterStats.MessageCount);
+            Assert.NotNull(moved);
+            Assert.Equal(properties.Type, moved!.BasicProperties.Type);
+            Assert.Equal(properties.MessageId, moved.BasicProperties.MessageId);
+            Assert.Equal(body, moved.Body.ToArray());
+            Assert.NotNull(moved.BasicProperties.Headers);
+            Assert.Equal(
+                "unknown-contract",
+                ReadHeader(
+                    moved.BasicProperties.Headers!,
+                    "x-asyncomnia-unhandled-reason"));
+            Assert.Equal(
+                sourceQueueName,
+                ReadHeader(
+                    moved.BasicProperties.Headers,
+                    "x-asyncomnia-source-queue"));
+            Assert.Equal(
+                "events/clients",
+                ReadHeader(
+                    moved.BasicProperties.Headers,
+                    "x-asyncomnia-source-exchange"));
+            Assert.Equal(
+                "client-deleted",
+                ReadHeader(
+                    moved.BasicProperties.Headers,
+                    "x-asyncomnia-source-routing-key"));
+        }
+        finally
+        {
+            await StopHostAsync(host);
+        }
+    }
+
     private IHost CreateHost(
         string endpointName,
         Action<IServiceCollection> configureServices,
@@ -713,5 +817,13 @@ public sealed class RabbitMqConsumerIntegrationTests
     private static string CreateEndpointName()
     {
         return $"integration-{Guid.NewGuid():N}";
+    }
+
+    private static string ReadHeader(
+        IDictionary<string, object?> headers,
+        string name)
+    {
+        var value = Assert.IsType<byte[]>(headers[name]);
+        return Encoding.UTF8.GetString(value);
     }
 }

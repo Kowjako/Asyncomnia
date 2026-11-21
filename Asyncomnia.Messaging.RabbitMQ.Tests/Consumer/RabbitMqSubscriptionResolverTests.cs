@@ -39,18 +39,12 @@ public sealed class RabbitMqSubscriptionResolverTests
         Assert.Equal(
             "events/clients/subscription/auditing-service",
             subscription.QueueName);
-        Assert.Collection(
-            subscription.Bindings,
-            binding =>
-            {
-                Assert.Equal("client-contract-signed", binding.RoutingKey);
-                Assert.Equal(typeof(ClientContractSignedEvent), binding.MessageType);
-            },
-            binding =>
-            {
-                Assert.Equal("client-created-event", binding.RoutingKey);
-                Assert.Equal(typeof(ClientCreatedEvent), binding.MessageType);
-            });
+        Assert.Equal(
+            "client-contract-signed",
+            subscription.Bindings[typeof(ClientContractSignedEvent)]);
+        Assert.Equal(
+            "client-created-event",
+            subscription.Bindings[typeof(ClientCreatedEvent)]);
     }
 
     [Fact]
@@ -73,8 +67,8 @@ public sealed class RabbitMqSubscriptionResolverTests
                     "commands/long-work-job/subscription/worker-service",
                     subscription.QueueName);
                 var binding = Assert.Single(subscription.Bindings);
-                Assert.Equal("start-long-work-job-command", binding.RoutingKey);
-                Assert.Equal(typeof(StartLongWorkJobCommand), binding.MessageType);
+                Assert.Equal("start-long-work-job-command", binding.Value);
+                Assert.Equal(typeof(StartLongWorkJobCommand), binding.Key);
             },
             subscription =>
             {
@@ -84,8 +78,8 @@ public sealed class RabbitMqSubscriptionResolverTests
                     "events/clients/subscription/worker-service",
                     subscription.QueueName);
                 var binding = Assert.Single(subscription.Bindings);
-                Assert.Equal("client-created-event", binding.RoutingKey);
-                Assert.Equal(typeof(ClientCreatedEvent), binding.MessageType);
+                Assert.Equal("client-created-event", binding.Value);
+                Assert.Equal(typeof(ClientCreatedEvent), binding.Key);
             });
     }
 

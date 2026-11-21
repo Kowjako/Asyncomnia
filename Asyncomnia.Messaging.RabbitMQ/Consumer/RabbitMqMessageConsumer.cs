@@ -3,6 +3,7 @@ using Asyncomnia.Messaging.Dispatching;
 using Asyncomnia.Messaging.Inbound;
 using Asyncomnia.Messaging.Internal.Serialization;
 using Asyncomnia.Messaging.RabbitMQ.Consumer.DeadLettering;
+using Asyncomnia.Messaging.RabbitMQ.Consumer.Unhandled;
 using Asyncomnia.Messaging.RabbitMQ.Infrastructure.Amqp.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
@@ -14,7 +15,8 @@ internal sealed class RabbitMqMessageConsumer(
     IServiceScopeFactory scopeFactory,
     MessageJsonSerializer messageSerializer,
     IMessageDispatchCatalog dispatchCatalog,
-    RabbitMqConsumeErrorStrategy errorStrategy) 
+    RabbitMqConsumeErrorStrategy errorStrategy,
+    RabbitMqUnhandledMessageStrategy unhandledStrategy) 
 {
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory
         ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -27,6 +29,9 @@ internal sealed class RabbitMqMessageConsumer(
 
     private readonly RabbitMqConsumeErrorStrategy _errorStrategy = errorStrategy
         ?? throw new ArgumentNullException(nameof(errorStrategy));
+
+    private readonly RabbitMqUnhandledMessageStrategy _unhandledStrategy = unhandledStrategy
+       ?? throw new ArgumentNullException(nameof(unhandledStrategy));
 
     // we are using class as key, so use referenceEqualityComparer to distinguish instances.
     private readonly ConcurrentDictionary<IChannel, SemaphoreSlim> _channelLocks = new(ReferenceEqualityComparer.Instance);
@@ -44,8 +49,7 @@ internal sealed class RabbitMqMessageConsumer(
 
         try
         {
-            await ProcessAsync(delivery, subscription, token);
-            response = AckResponse.Ack;
+            response = await ProcessAsync(delivery, context, subscription, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -76,23 +80,32 @@ internal sealed class RabbitMqMessageConsumer(
         }
     }
 
-    private async Task ProcessAsync(BasicDeliverEventArgs delivery, RabbitMqSubscription subscription, CancellationToken token)
+    private async Task<AckResponse> ProcessAsync(BasicDeliverEventArgs delivery, RabbitMqConsumeContext consumeContext, RabbitMqSubscription subscription, CancellationToken token)
     {
         var contractType = delivery.BasicProperties.Type;
 
         if (string.IsNullOrWhiteSpace(contractType))
         {
-            throw new InvalidOperationException("RabbitMQ message does not define a contract type");
+            return await _unhandledStrategy.HandleAsync(
+                consumeContext,
+                UnhandledMessageReason.MissingContractType,
+                token);
         }
 
         if (!_dispatchCatalog.TryGet(contractType, out var descriptor) || descriptor is null)
         {
-            throw new InvalidOperationException($"No dispatch descriptor registered for contract {contractType}");
+            return await _unhandledStrategy.HandleAsync(
+                consumeContext,
+                UnhandledMessageReason.UnknownContract,
+                token);
         }
 
-        if (!subscription.Bindings.Any(x => x.MessageType == descriptor.MessageType))
+        if (!subscription.Bindings.ContainsKey(descriptor.MessageType))
         {
-            throw new InvalidOperationException($"Message type '{descriptor.MessageType.FullName}' is not configured for subscription queue '{subscription.QueueName}'");
+            return await _unhandledStrategy.HandleAsync(
+                consumeContext,
+                UnhandledMessageReason.NotConfiguredForSubscription,
+                token);
         }
 
         var metadata = RabbitMqMessagePropertiesMapper.MapToAsyncomniaProperties(delivery.BasicProperties);
@@ -104,6 +117,8 @@ internal sealed class RabbitMqMessageConsumer(
 
         var pipeline = scope.ServiceProvider.GetRequiredService<IInboundMessagePipeline>();
         await descriptor.DispatchAsync(pipeline, context, token);
+
+        return AckResponse.Ack;
     }
 
     private static ValueTask ReturnResponseToBrokerAsync(IChannel channel, ulong deliveryTag, AckResponse response, CancellationToken token)
